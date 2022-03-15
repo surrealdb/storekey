@@ -1,0 +1,17 @@
+[package]
+name = "storekey"
+publish = true
+edition = "2021"
+version = "0.0.0"
+authors = ["Tobie Morgan Hitchcock <tobie@surrealdb.com>", "Michal Hornicky <mhornick@redhat.com>", "Dan Burkert <dan@danburkert.com>"]
+description = "Lexicographic sort-order preserving binary encoding format for key-value stores"
+repository = "https://github.com/surrealdb/storekey"
+homepage = "https://github.com/surrealdb/storekey"
+keywords = ["database", "encoding", "key-value", "kv-store", "serialization"]
+categories = ["encoding"]
+license = "Apache-2.0"
+
+[dependencies]
+byteorder = "1.4.3"
+serde = { version = "1.0.136", features = ["derive"] }
+thiserror = "1.0.30"
