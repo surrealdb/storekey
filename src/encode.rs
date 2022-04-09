@@ -76,13 +76,6 @@ use thiserror::Error;
 ///
 /// The ordering of sequential elements follows the `Ord` implementation of `slice`, that is, from
 /// left to write when viewing a `Vec` printed via the `{:?}` formatter.
-///
-/// The caveat with these types is that their length must be known before deserialization. This is
-/// because the length is *not* serialized prior to the elements in order to preserve ordering and
-/// there is no trivial way to tokenise between sequential elements that 1. does not corrupt
-/// ordering and 2. may not confuse tokenisation with following elements of a different type during
-/// tuple or struct deserialization. Thus, when deserializing sequences, strings and maps, the
-/// process will only be considered complete once the inner `reader` produces an EOF character.
 #[derive(Debug)]
 pub struct Serializer<W>
 where
@@ -549,6 +542,7 @@ where
 	}
 
 	fn end(self) -> Result<()> {
+		self.writer.write_u8(0x01)?;
 		Ok(())
 	}
 }
@@ -632,6 +626,7 @@ where
 	}
 
 	fn end(self) -> Result<()> {
+		self.writer.write_u8(0x01)?;
 		Ok(())
 	}
 }

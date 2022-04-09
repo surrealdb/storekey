@@ -56,11 +56,22 @@ where
 	T::deserialize(&mut deserializer)
 }
 
-impl<R: io::Read> Deserializer<R> {
+impl<R: io::BufRead> Deserializer<R> {
 	/// Creates a new ordered bytes encoder whose output will be written to the provided writer.
 	pub fn new(reader: R) -> Deserializer<R> {
 		Deserializer {
 			reader,
+		}
+	}
+
+	pub fn move_on(&mut self) -> Result<bool> {
+		let buf = self.reader.fill_buf()?;
+		match buf.first() {
+			Some(v) if v == &0x01 => {
+				self.reader.consume(1);
+				Ok(true)
+			}
+			_ => Ok(false),
 		}
 	}
 
@@ -330,6 +341,9 @@ where
 			where
 				T: serde::de::DeserializeSeed<'de>,
 			{
+				if self.deserializer.move_on()? {
+					return Ok(None);
+				}
 				match serde::de::DeserializeSeed::deserialize(seed, &mut *self.deserializer) {
 					Ok(v) => Ok(Some(v)),
 					Err(Error::Io(ref err)) if err.kind() == io::ErrorKind::UnexpectedEof => {
@@ -419,6 +433,9 @@ where
 			where
 				T: serde::de::DeserializeSeed<'de>,
 			{
+				if self.deserializer.move_on()? {
+					return Ok(None);
+				}
 				match serde::de::DeserializeSeed::deserialize(seed, &mut *self.deserializer) {
 					Ok(v) => Ok(Some(v)),
 					Err(Error::Io(ref err)) if err.kind() == io::ErrorKind::UnexpectedEof => {
