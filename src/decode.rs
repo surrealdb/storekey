@@ -109,6 +109,10 @@ where
 {
 	type Error = Error;
 
+	fn is_human_readable(&self) -> bool {
+		false
+	}
+
 	fn deserialize_any<V>(self, _visitor: V) -> Result<V::Value>
 	where
 		V: Visitor<'de>,
