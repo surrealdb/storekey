@@ -39,21 +39,36 @@ impl serde::de::Error for Error {
 pub type Result<T> = std::result::Result<T, Error>;
 
 /// Deserialize data from the given slice of bytes.
-pub fn deserialize<T>(bytes: &[u8]) -> Result<T>
+pub fn deserialize<'de: 'a, 'a, T>(bytes: &'a [u8]) -> Result<T>
 where
-	T: for<'de> Deserialize<'de>,
+	T: Deserialize<'de>,
 {
 	deserialize_from(bytes)
 }
 
 /// Deserialize data from the given byte reader.
-pub fn deserialize_from<R, T>(reader: R) -> Result<T>
+pub fn deserialize_from<'de, R, T>(reader: R) -> Result<T>
 where
 	R: io::BufRead,
-	T: for<'de> Deserialize<'de>,
+	T: Deserialize<'de>,
 {
 	let mut deserializer = Deserializer::new(reader);
 	T::deserialize(&mut deserializer)
+}
+
+mod tests {
+	use super::*;
+
+	#[derive(serde::Deserialize)]
+	struct Foo<'a> {
+		a: &'a str,
+	}
+
+	#[test]
+	fn test() {
+		let b = b"asd";
+		let foo: Foo<'_> = deserialize(b).unwrap();
+	}
 }
 
 impl<R: io::BufRead> Deserializer<R> {
