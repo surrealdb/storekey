@@ -2,7 +2,7 @@
 name = "storekey"
 publish = true
 edition = "2021"
-version = "0.3.0"
+version = "0.4.0"
 authors = ["Tobie Morgan Hitchcock <tobie@surrealdb.com>", "Michal Hornicky <mhornick@redhat.com>", "Dan Burkert <dan@danburkert.com>"]
 description = "Lexicographic sort-order preserving binary encoding format for key-value stores"
 repository = "https://github.com/surrealdb/storekey"
