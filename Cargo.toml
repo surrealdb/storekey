@@ -13,5 +13,5 @@ license = "Apache-2.0"
 
 [dependencies]
 byteorder = "1.4.3"
-serde = { version = "1.0.137", features = ["derive"] }
-thiserror = "1.0.31"
+serde = { version = "1.0.152", features = ["derive"] }
+thiserror = "1.0.38"
