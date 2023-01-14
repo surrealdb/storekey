@@ -275,8 +275,9 @@ where
 	where
 		V: Visitor<'de>,
 	{
+		let len = self.reader.read_u64::<BE>()?;
 		let mut bytes = vec![];
-		for byte in (&mut self.reader).bytes() {
+		for byte in (&mut self.reader).take(len).bytes() {
 			bytes.push(byte?);
 		}
 		visitor.visit_byte_buf(bytes)

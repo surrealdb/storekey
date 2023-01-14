@@ -422,6 +422,7 @@ where
 	}
 
 	fn serialize_bytes(self, v: &[u8]) -> Result<()> {
+		self.writer.write_u64::<BE>(v.len() as u64)?;
 		self.writer.write_all(v)?;
 		Ok(())
 	}
