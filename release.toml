@@ -1,7 +1,8 @@
-pre-release-commit-message = "Release {{version}}"
 sign-commit = false
+pre-release-commit-message = "Release {{version}}"
 tag-message = ""
 tag-prefix = ""
-publish = true
-push = true
+consolidate-commits = false
+publish = false
+push = false
 tag = true
