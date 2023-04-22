@@ -211,7 +211,7 @@ where
 			self.writer.write_u16::<BE>((val >> 32) as u16)?;
 			self.writer.write_u32::<BE>(val as u32)
 		} else if val < 1 << 60 {
-			self.writer.write_u64::<BE>((val as u64) | 7 << 60)
+			self.writer.write_u64::<BE>(val | 7 << 60)
 		} else {
 			self.writer.write_u8(8 << 4)?;
 			self.writer.write_u64::<BE>(val)
@@ -290,7 +290,7 @@ where
 	pub fn serialize_var_i64(&mut self, v: i64) -> Result<()> {
 		// The mask is 0 for positive input and u64::MAX for negative input
 		let mask = (v >> 63) as u64;
-		let val = v.abs() as u64 - (1 & mask);
+		let val = v.unsigned_abs() - (1 & mask);
 		if val < 1 << 3 {
 			let masked = (val | (0x10 << 3)) ^ mask;
 			self.writer.write_u8(masked as u8)
@@ -319,7 +319,7 @@ where
 			self.writer.write_u32::<BE>(masked as u32)
 		} else if val < 1 << 59 {
 			let masked = (val | (0x17 << 59)) ^ mask;
-			self.writer.write_u64::<BE>(masked as u64)
+			self.writer.write_u64::<BE>(masked)
 		} else {
 			self.writer.write_u8((0x18 << 3) ^ mask as u8)?;
 			self.writer.write_u64::<BE>(val ^ mask)
