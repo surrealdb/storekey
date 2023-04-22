@@ -124,7 +124,7 @@ where
 	where
 		V: Visitor<'de>,
 	{
-		let b = !matches!(self.reader.read_u8()?, 0);
+		let b = self.reader.read_u8()? != 0;
 		visitor.visit_bool(b)
 	}
 

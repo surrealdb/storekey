@@ -347,12 +347,7 @@ where
 	}
 
 	fn serialize_bool(self, v: bool) -> Result<()> {
-		let b = if v {
-			1
-		} else {
-			0
-		};
-		self.writer.write_u8(b)?;
+		self.writer.write_u8(v as u8)?;
 		Ok(())
 	}
 
@@ -441,7 +436,6 @@ where
 	}
 
 	fn serialize_unit(self) -> Result<()> {
-		self.writer.write_all(&[])?;
 		Ok(())
 	}
 
