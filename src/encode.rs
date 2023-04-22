@@ -108,10 +108,7 @@ where
 	T: Serialize,
 {
 	let mut bytes = vec![];
-	{
-		let mut buffered = io::BufWriter::new(&mut bytes);
-		serialize_into(&mut buffered, v)?;
-	}
+	serialize_into(&mut bytes, v)?;
 	Ok(bytes)
 }
 
