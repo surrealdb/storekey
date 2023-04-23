@@ -105,7 +105,7 @@ pub type Result<T> = std::result::Result<T, Error>;
 /// Serialize data into a vector of `u8` bytes.
 pub fn serialize<T>(v: &T) -> Result<Vec<u8>>
 where
-	T: Serialize,
+	T: Serialize + ?Sized,
 {
 	let mut bytes = vec![];
 	{
@@ -119,7 +119,7 @@ where
 pub fn serialize_into<W, T>(writer: W, value: &T) -> Result<()>
 where
 	W: Write,
-	T: Serialize,
+	T: Serialize + ?Sized,
 {
 	let mut serializer = Serializer::new(writer);
 	value.serialize(&mut serializer)
