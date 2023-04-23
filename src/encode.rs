@@ -539,6 +539,7 @@ where
 	where
 		T: ?Sized + Serialize,
 	{
+		self.writer.write_u8(0x00)?;
 		value.serialize(&mut **self)
 	}
 
@@ -623,6 +624,7 @@ where
 	where
 		T: ?Sized + Serialize,
 	{
+		self.writer.write_u8(0x00)?;
 		value.serialize(&mut **self)
 	}
 

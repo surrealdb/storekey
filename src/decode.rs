@@ -65,14 +65,7 @@ impl<R: io::BufRead> Deserializer<R> {
 	}
 
 	pub fn move_on(&mut self) -> Result<bool> {
-		let buf = self.reader.fill_buf()?;
-		match buf.first() {
-			Some(v) if v == &0x01 => {
-				self.reader.consume(1);
-				Ok(true)
-			}
-			_ => Ok(false),
-		}
+		Ok(self.reader.read_u8()? == 0x01)
 	}
 
 	/// Deserialize a `u64` that has been serialized using the `serialize_var_u64` method.
