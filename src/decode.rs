@@ -3,10 +3,15 @@ use serde;
 use serde::de::{Deserialize, Visitor};
 use std;
 use std::fmt;
-use std::io::{self, Read};
+use std::io::{self, Read, BufRead};
+use std::marker::PhantomData;
 use std::str;
 use std::{i16, i32, i64, i8};
 use thiserror::Error;
+
+use self::read::{ReadReference, SliceReader, ReadReader};
+
+pub mod read;
 
 /// A decoder for deserializing bytes from an order preserving format to a value.
 #[derive(Debug)]
@@ -39,24 +44,24 @@ impl serde::de::Error for Error {
 pub type Result<T> = std::result::Result<T, Error>;
 
 /// Deserialize data from the given slice of bytes.
-pub fn deserialize<T>(bytes: &[u8]) -> Result<T>
+pub fn deserialize<'de, T>(bytes: &'de [u8]) -> Result<T>
 where
-	T: for<'de> Deserialize<'de>,
+	T: Deserialize<'de>,
 {
-	deserialize_from(bytes)
+	deserialize_from(SliceReader::new(bytes))
 }
 
 /// Deserialize data from the given byte reader.
-pub fn deserialize_from<R, T>(reader: R) -> Result<T>
+pub fn deserialize_from<'de, R, T>(reader: R) -> Result<T>
 where
-	R: io::BufRead,
-	T: for<'de> Deserialize<'de>,
+	R: BufRead,
+	T: Deserialize<'de>,
 {
-	let mut deserializer = Deserializer::new(reader);
+	let mut deserializer = Deserializer::new(ReadReader::new(reader));
 	T::deserialize(&mut deserializer)
 }
 
-impl<R: io::BufRead> Deserializer<R> {
+impl<'de, R: ReadReference<'de>> Deserializer<R> {
 	/// Creates a new ordered bytes encoder whose output will be written to the provided writer.
 	pub fn new(reader: R) -> Deserializer<R> {
 		Deserializer {
@@ -105,7 +110,7 @@ impl<R: io::BufRead> Deserializer<R> {
 
 impl<'de, 'a, R> serde::de::Deserializer<'de> for &'a mut Deserializer<R>
 where
-	R: io::BufRead,
+	R: ReadReference<'de>,
 {
 	type Error = Error;
 
@@ -329,16 +334,17 @@ where
 	where
 		V: Visitor<'de>,
 	{
-		struct Access<'a, R>
+		struct Access<'de, 'a, R>
 		where
-			R: 'a + io::BufRead,
+			R: 'a + ReadReference<'de>,
 		{
 			deserializer: &'a mut Deserializer<R>,
+			_spooky: PhantomData<&'de ()>
 		}
 
-		impl<'de, 'a, R> serde::de::SeqAccess<'de> for Access<'a, R>
+		impl<'de, 'a, R> serde::de::SeqAccess<'de> for Access<'de, 'a, R>
 		where
-			R: io::BufRead,
+			R: ReadReference<'de>,
 		{
 			type Error = Error;
 
@@ -361,6 +367,7 @@ where
 
 		visitor.visit_seq(Access {
 			deserializer: self,
+			_spooky: PhantomData
 		})
 	}
 
@@ -368,17 +375,18 @@ where
 	where
 		V: Visitor<'de>,
 	{
-		struct Access<'a, R>
+		struct Access<'de, 'a, R>
 		where
-			R: 'a + io::BufRead,
+			R: 'a + ReadReference<'de>,
 		{
 			deserializer: &'a mut Deserializer<R>,
 			len: usize,
+			_spooky: PhantomData<&'de ()>
 		}
 
-		impl<'de, 'a, R> serde::de::SeqAccess<'de> for Access<'a, R>
+		impl<'de, 'a, R> serde::de::SeqAccess<'de> for Access<'de, 'a, R>
 		where
-			R: io::BufRead,
+			R: ReadReference<'de>,
 		{
 			type Error = Error;
 
@@ -402,6 +410,7 @@ where
 		visitor.visit_seq(Access {
 			deserializer: self,
 			len,
+			_spooky: PhantomData
 		})
 	}
 
@@ -421,16 +430,17 @@ where
 	where
 		V: Visitor<'de>,
 	{
-		struct Access<'a, R>
+		struct Access<'de, 'a, R>
 		where
-			R: 'a + io::BufRead,
+			R: 'a + ReadReference<'de>,
 		{
 			deserializer: &'a mut Deserializer<R>,
+			_spooky: PhantomData<&'de ()>
 		}
 
-		impl<'de, 'a, R> serde::de::MapAccess<'de> for Access<'a, R>
+		impl<'de, 'a, R> serde::de::MapAccess<'de> for Access<'de, 'a, R>
 		where
-			R: io::BufRead,
+			R: ReadReference<'de>,
 		{
 			type Error = Error;
 
@@ -460,6 +470,7 @@ where
 
 		visitor.visit_map(Access {
 			deserializer: self,
+			_spooky: PhantomData,
 		})
 	}
 
@@ -486,7 +497,7 @@ where
 	{
 		impl<'de, 'a, R> serde::de::EnumAccess<'de> for &'a mut Deserializer<R>
 		where
-			R: io::BufRead,
+			R: ReadReference<'de>,
 		{
 			type Error = Error;
 			type Variant = Self;
@@ -504,7 +515,7 @@ where
 
 		impl<'de, 'a, R> serde::de::VariantAccess<'de> for &'a mut Deserializer<R>
 		where
-			R: io::BufRead,
+			R: ReadReference<'de>,
 		{
 			type Error = Error;
 

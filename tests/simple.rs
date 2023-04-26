@@ -1,4 +1,4 @@
-use serde::{de::DeserializeOwned, Serialize};
+use serde::{de::DeserializeOwned, Serialize, Deserialize};
 use std::fmt::Debug;
 use storekey::{deserialize, serialize};
 
@@ -112,4 +112,14 @@ fn strings() {
 fn enums() {
 	expect(Ok::<u8, ()>(5), &[0, 0, 0, 0, 5]);
 	expect(Err::<(), u8>(10), &[0, 0, 0, 1, 10]);
+}
+
+#[test]
+fn borrowed() {
+	#[derive(Serialize, Deserialize)]
+	struct Borrowed<'a> {
+		string: &'a str,
+	}
+
+	deserialize::<Borrowed<'_>>(b"test\0").unwrap();
 }
