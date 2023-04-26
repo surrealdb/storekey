@@ -3,13 +3,13 @@ use serde;
 use serde::de::{Deserialize, Visitor};
 use std;
 use std::fmt;
-use std::io::{self, Read, BufRead};
+use std::io::{self, BufRead, Read};
 use std::marker::PhantomData;
 use std::str;
 use std::{i16, i32, i64, i8};
 use thiserror::Error;
 
-use self::read::{ReadReference, SliceReader, ReadReader};
+use self::read::{ReadReader, ReadReference, Reference, SliceReader};
 
 pub mod read;
 
@@ -48,7 +48,8 @@ pub fn deserialize<'de, T>(bytes: &'de [u8]) -> Result<T>
 where
 	T: Deserialize<'de>,
 {
-	deserialize_from(SliceReader::new(bytes))
+	let mut deserializer = Deserializer::new(SliceReader::new(bytes));
+	T::deserialize(&mut deserializer)
 }
 
 /// Deserialize data from the given byte reader.
@@ -221,52 +222,37 @@ where
 	where
 		V: Visitor<'de>,
 	{
-		let mut string = String::new();
-		let mut buffer: Vec<u8> = vec![];
-		match self.reader.read_until(0u8, &mut buffer) {
-			Ok(_) => match str::from_utf8(&buffer) {
-				Ok(mut s) => {
-					const EOF: char = '\u{0}';
-					const EOF_STR: &str = "\u{0}";
-					if s.len() >= EOF.len_utf8() {
-						let eof_start = s.len() - EOF.len_utf8();
-						if &s[eof_start..] == EOF_STR {
-							s = &s[..eof_start];
-						}
-					}
-					string.push_str(s)
-				}
-				Err(_) => return Err(Error::InvalidUtf8),
-			},
+		match self.reader.read_reference_until(0u8) {
+			Ok(reference) => {
+				let bytes = match reference {
+					Reference::Borrowed(b) => b,
+					Reference::Copied(b) => b,
+				};
+				let string = std::str::from_utf8(bytes).map_err(|_| Error::InvalidUtf8)?;
+				let c = string.chars().next().ok_or(Error::InvalidUtf8)?;
+				visitor.visit_char(c)
+			}
 			Err(_) => return Err(Error::UnexpectedEof),
 		}
-		visitor.visit_string(string)
 	}
 
 	fn deserialize_str<V>(self, visitor: V) -> Result<V::Value>
 	where
 		V: Visitor<'de>,
 	{
-		let mut string = String::new();
-		let mut buffer: Vec<u8> = vec![];
-		match self.reader.read_until(0u8, &mut buffer) {
-			Ok(_) => match str::from_utf8(&buffer) {
-				Ok(mut s) => {
-					const EOF: char = '\u{0}';
-					const EOF_STR: &str = "\u{0}";
-					if s.len() >= EOF.len_utf8() {
-						let eof_start = s.len() - EOF.len_utf8();
-						if &s[eof_start..] == EOF_STR {
-							s = &s[..eof_start];
-						}
-					}
-					string.push_str(s)
+		match self.reader.read_reference_until(0u8) {
+			Ok(reference) => match reference {
+				Reference::Borrowed(bytes) => {
+					let string = std::str::from_utf8(bytes).map_err(|_| Error::InvalidUtf8)?;
+					visitor.visit_borrowed_str(string)
 				}
-				Err(_) => return Err(Error::InvalidUtf8),
+				Reference::Copied(bytes) => {
+					let string = std::str::from_utf8(bytes).map_err(|_| Error::InvalidUtf8)?;
+					visitor.visit_str(string)
+				}
 			},
 			Err(_) => return Err(Error::UnexpectedEof),
 		}
-		visitor.visit_string(string)
 	}
 
 	fn deserialize_string<V>(self, visitor: V) -> Result<V::Value>
@@ -339,7 +325,7 @@ where
 			R: 'a + ReadReference<'de>,
 		{
 			deserializer: &'a mut Deserializer<R>,
-			_spooky: PhantomData<&'de ()>
+			_spooky: PhantomData<&'de ()>,
 		}
 
 		impl<'de, 'a, R> serde::de::SeqAccess<'de> for Access<'de, 'a, R>
@@ -367,7 +353,7 @@ where
 
 		visitor.visit_seq(Access {
 			deserializer: self,
-			_spooky: PhantomData
+			_spooky: PhantomData,
 		})
 	}
 
@@ -381,7 +367,7 @@ where
 		{
 			deserializer: &'a mut Deserializer<R>,
 			len: usize,
-			_spooky: PhantomData<&'de ()>
+			_spooky: PhantomData<&'de ()>,
 		}
 
 		impl<'de, 'a, R> serde::de::SeqAccess<'de> for Access<'de, 'a, R>
@@ -410,7 +396,7 @@ where
 		visitor.visit_seq(Access {
 			deserializer: self,
 			len,
-			_spooky: PhantomData
+			_spooky: PhantomData,
 		})
 	}
 
@@ -435,7 +421,7 @@ where
 			R: 'a + ReadReference<'de>,
 		{
 			deserializer: &'a mut Deserializer<R>,
-			_spooky: PhantomData<&'de ()>
+			_spooky: PhantomData<&'de ()>,
 		}
 
 		impl<'de, 'a, R> serde::de::MapAccess<'de> for Access<'de, 'a, R>
