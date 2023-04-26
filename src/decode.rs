@@ -3,7 +3,7 @@ use serde;
 use serde::de::{Deserialize, Visitor};
 use std;
 use std::fmt;
-use std::io::{self, BufRead, Read};
+use std::io::{self, BufRead};
 use std::marker::PhantomData;
 use std::str;
 use std::{i16, i32, i64, i8};
@@ -267,18 +267,22 @@ where
 		V: Visitor<'de>,
 	{
 		let len = self.reader.read_u64::<BE>()?;
-		let mut bytes = vec![];
-		for byte in (&mut self.reader).take(len).bytes() {
-			bytes.push(byte?);
+		match self.reader.read_reference(len as usize)? {
+			Reference::Borrowed(bytes) => visitor.visit_borrowed_bytes(bytes),
+			Reference::Copied(bytes) => visitor.visit_bytes(bytes),
 		}
-		visitor.visit_byte_buf(bytes)
 	}
 
 	fn deserialize_byte_buf<V>(self, visitor: V) -> Result<V::Value>
 	where
 		V: Visitor<'de>,
 	{
-		self.deserialize_bytes(visitor)
+		let len = self.reader.read_u64::<BE>()?;
+		let bytes = match self.reader.read_reference(len as usize)? {
+			Reference::Borrowed(bytes) => bytes,
+			Reference::Copied(bytes) => bytes,
+		};
+		visitor.visit_byte_buf(bytes.into())
 	}
 
 	fn deserialize_option<V>(self, visitor: V) -> Result<V::Value>

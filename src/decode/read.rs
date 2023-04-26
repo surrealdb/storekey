@@ -10,7 +10,10 @@ pub enum Reference<'b, 'c> {
 
 /// For zero-copy reading.
 pub trait ReadReference<'de>: Read + BufRead {
-	/// Reads the exact number of bytes from the underlying byte-array.
+	/// Reads an exact number of bytes.
+	fn read_reference<'a>(&'a mut self, len: usize) -> Result<Reference<'de, 'a>, io::Error>;
+
+	/// Reads bytes until a delimiter, excluding the delimiter.
 	fn read_reference_until<'a>(
 		&'a mut self,
 		delimiter: u8,
@@ -34,6 +37,15 @@ impl<R: Read> ReadReader<R> {
 }
 
 impl<'de, R: BufRead> ReadReference<'de> for ReadReader<R> {
+	fn read_reference<'a>(&'a mut self, len: usize) -> Result<Reference<'de, 'a>, io::Error> {
+		self.buf.clear();
+		let read = self.inner.by_ref().take(len as u64).read_to_end(&mut self.buf)?;
+		if read != len {
+			return Err(io::ErrorKind::UnexpectedEof.into());
+		}
+		Ok(Reference::Copied(&self.buf))
+	}
+
 	#[inline]
 	fn read_reference_until<'a>(
 		&'a mut self,
@@ -110,6 +122,15 @@ impl<'a> BufRead for SliceReader<'a> {
 }
 
 impl<'de> ReadReference<'de> for SliceReader<'de> {
+	fn read_reference<'a>(&'a mut self, len: usize) -> Result<Reference<'de, 'a>, io::Error> {
+		if len > self.inner.len() {
+			return Err(ErrorKind::UnexpectedEof.into());
+		}
+		let (a, b) = self.inner.split_at(len);
+		self.inner = b;
+		Ok(Reference::Borrowed(a))
+	}
+
 	#[inline]
 	fn read_reference_until<'a>(
 		&'a mut self,
