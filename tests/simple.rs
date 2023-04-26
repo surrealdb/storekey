@@ -105,17 +105,22 @@ fn chars() {
 }
 
 #[test]
+fn enums() {
+	expect(Ok::<u8, ()>(5), &[0, 0, 0, 0, 5]);
+	expect(Err::<(), u8>(10), &[0, 0, 0, 1, 10]);
+}
+
+#[test]
+fn bytes() {
+	roundtrip!(vec![5u8; 9]);
+}
+
+#[test]
 fn strings() {
 	roundtrip!("".to_owned());
 	roundtrip!("hello world!".to_owned());
 	roundtrip!("adiós".to_owned());
 	less("aaa", "bbb");
-}
-
-#[test]
-fn enums() {
-	expect(Ok::<u8, ()>(5), &[0, 0, 0, 0, 5]);
-	expect(Err::<(), u8>(10), &[0, 0, 0, 1, 10]);
 }
 
 #[test]
