@@ -403,6 +403,9 @@ where
 	}
 
 	fn serialize_char(self, v: char) -> Result<()> {
+		if v == 0 as char {
+			return Err(Error::Message("cannot serialize NUL char".to_owned()));
+		}
 		self.serialize_str(&v.to_string())?;
 		Ok(())
 	}
