@@ -2,7 +2,7 @@ use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::fmt::Debug;
 use storekey::{deserialize, serialize};
 
-macro_rules! roundtrip {
+macro_rules! roundtrip_inner {
 	($v: expr) => {
 		#[allow(unused)]
 		let mut v2 = $v.clone();
@@ -12,8 +12,20 @@ macro_rules! roundtrip {
 	};
 }
 
+macro_rules! roundtrip {
+	($v: expr) => {
+		roundtrip_inner!($v.clone());
+
+		let array = [$v.clone(), $v.clone()];
+
+		roundtrip_inner!(array);
+		//roundtrip_inner!(vec![$v.clone(); 2]);
+	};
+}
+
 fn expect<T: Serialize + DeserializeOwned + PartialEq + Debug>(t: T, expected: &[u8]) {
 	assert_eq!(serialize(&t).unwrap(), expected);
+
 	assert_eq!(deserialize::<T>(expected).unwrap(), t);
 }
 
@@ -46,6 +58,7 @@ fn option() {
 }
 
 #[test]
+
 fn int() {
 	less(0, 1);
 	less(30, 1000);
@@ -108,15 +121,38 @@ fn chars() {
 fn enums() {
 	expect(Ok::<u8, ()>(5), &[0, 0, 0, 0, 5]);
 	expect(Err::<(), u8>(10), &[0, 0, 0, 1, 10]);
+	expect(vec![Ok::<u8, ()>(5)], &[0, 0, 0, 0, 5, 1]);
+
+	#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+	enum Test<'a> {
+		A,
+		B(u8),
+		C(String),
+		D(&'a str),
+	}
+
+	roundtrip!(Test::A);
+	roundtrip!(Test::B(42));
+	roundtrip!(Test::C("hello".to_owned()));
+	roundtrip!(Test::D("hello"));
 }
 
 #[test]
+
+fn vector() {
+	roundtrip!(vec![2, 3, 4, 5]);
+}
+
+#[test]
+
 fn bytes() {
 	roundtrip!(vec![5u8; 9]);
 }
 
 #[test]
+
 fn strings() {
+	expect("foo".to_owned(), b"foo\0");
 	roundtrip!("".to_owned());
 	roundtrip!("hello world!".to_owned());
 	roundtrip!("adiós".to_owned());
@@ -124,6 +160,7 @@ fn strings() {
 }
 
 #[test]
+
 fn borrowed_bytes() {
 	#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 	struct Borrowed<'a> {
@@ -143,19 +180,60 @@ fn borrowed_bytes() {
 fn borrowed_string() {
 	#[derive(Debug, PartialEq, Serialize, Deserialize)]
 	struct Borrowed<'a> {
-		string: &'a str,
+		one: &'a str,
+		two: &'a str,
 	}
 
 	assert_eq!(
-		deserialize::<Borrowed<'_>>(b"\0").unwrap(),
+		deserialize::<Borrowed<'_>>(b"\0\0").unwrap(),
 		Borrowed {
-			string: ""
+			one: "",
+			two: ""
 		}
 	);
 	assert_eq!(
-		deserialize::<Borrowed<'_>>(b"test\0").unwrap(),
+		deserialize::<Borrowed<'_>>(b"foo\0test\0").unwrap(),
 		Borrowed {
-			string: "test"
+			one: "foo",
+			two: "test",
 		}
 	);
+}
+
+#[test]
+fn fixed_sized_array() {
+	let array: [u8; 5] = [2, 3, 4, 5, 6];
+	roundtrip!(array);
+}
+
+#[test]
+fn structs() {
+	#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+	struct Lq<'a> {
+		__: u8,
+		_a: u8,
+		pub ns: &'a str,
+		_b: u8,
+		pub db: &'a str,
+		_c: u8,
+		_d: u8,
+		_e: u8,
+		pub lq: [u8; 16],
+	}
+
+	let lq = Lq {
+		__: 0x2f, // /
+		_a: 0x2a, // *
+		ns: "test",
+		_b: 0x2a, // *
+		db: "test",
+		_c: 0x21, // !
+		_d: 0x6c, // l
+		_e: 0x71, // v
+		lq: [0; 16],
+	};
+
+	println!("{:?}", serialize(&lq));
+
+	roundtrip!(lq);
 }
