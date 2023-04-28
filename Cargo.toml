@@ -14,7 +14,7 @@ license = "Apache-2.0"
 [dependencies]
 byteorder = "1.4.3"
 memchr = "2.5.0"
-serde = { version = "1.0.158", features = ["derive"] }
+serde = { version = "1.0.160", features = ["derive"] }
 thiserror = "1.0.40"
 
 [dev-dependencies]
