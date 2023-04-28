@@ -1,11 +1,15 @@
-use serde::{de::DeserializeOwned, Serialize};
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::fmt::Debug;
 use storekey::{deserialize, serialize};
 
-fn roundtrip<T: Serialize + DeserializeOwned + PartialEq + Debug>(t: T) {
-	let serialized = serialize(&t).unwrap();
-	let deserialized = deserialize::<T>(&serialized).unwrap();
-	assert_eq!(t, deserialized);
+macro_rules! roundtrip {
+	($v: expr) => {
+		#[allow(unused)]
+		let mut v2 = $v.clone();
+		let serialized = serialize(&$v).unwrap();
+		v2 = deserialize(&serialized).unwrap();
+		assert_eq!($v, v2);
+	};
 }
 
 fn expect<T: Serialize + DeserializeOwned + PartialEq + Debug>(t: T, expected: &[u8]) {
@@ -57,10 +61,10 @@ fn int() {
 fn fuzz_varint() {
 	let mut n = 0u64;
 	loop {
-		roundtrip(n);
-		roundtrip(u64::MAX - n);
-		roundtrip(n as i64);
-		roundtrip((u64::MAX - n) as i64);
+		roundtrip!(n);
+		roundtrip!(u64::MAX - n);
+		roundtrip!(n as i64);
+		roundtrip!((u64::MAX - n) as i64);
 		n = if let Some(next) = n.checked_add(1).and_then(|n| n.checked_mul(2)) {
 			next
 		} else {
@@ -86,12 +90,12 @@ fn floats() {
 
 #[test]
 fn chars() {
-	roundtrip('a');
+	roundtrip!('a');
 	less('a', 'b');
 
 	for u in 1..=char::MAX as u32 {
 		if let Some(c) = char::from_u32(u) {
-			roundtrip(c);
+			roundtrip!(c);
 		}
 	}
 
@@ -101,15 +105,57 @@ fn chars() {
 }
 
 #[test]
+fn enums() {
+	expect(Ok::<u8, ()>(5), &[0, 0, 0, 0, 5]);
+	expect(Err::<(), u8>(10), &[0, 0, 0, 1, 10]);
+}
+
+#[test]
+fn bytes() {
+	roundtrip!(vec![5u8; 9]);
+}
+
+#[test]
 fn strings() {
-	roundtrip("".to_owned());
-	roundtrip("hello world!".to_owned());
-	roundtrip("adiós".to_owned());
+	roundtrip!("".to_owned());
+	roundtrip!("hello world!".to_owned());
+	roundtrip!("adiós".to_owned());
 	less("aaa", "bbb");
 }
 
 #[test]
-fn enums() {
-	expect(Ok::<u8, ()>(5), &[0, 0, 0, 0, 5]);
-	expect(Err::<(), u8>(10), &[0, 0, 0, 1, 10]);
+fn borrowed_bytes() {
+	#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+	struct Borrowed<'a> {
+		#[serde(with = "serde_bytes")]
+		bytes: &'a [u8],
+	}
+
+	let buf = vec![1, 2, 3];
+	let borrowed = Borrowed {
+		bytes: &buf,
+	};
+
+	roundtrip!(borrowed);
+}
+
+#[test]
+fn borrowed_string() {
+	#[derive(Debug, PartialEq, Serialize, Deserialize)]
+	struct Borrowed<'a> {
+		string: &'a str,
+	}
+
+	assert_eq!(
+		deserialize::<Borrowed<'_>>(b"\0").unwrap(),
+		Borrowed {
+			string: ""
+		}
+	);
+	assert_eq!(
+		deserialize::<Borrowed<'_>>(b"test\0").unwrap(),
+		Borrowed {
+			string: "test"
+		}
+	);
 }

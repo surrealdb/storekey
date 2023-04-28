@@ -3,10 +3,15 @@ use serde;
 use serde::de::{Deserialize, Visitor};
 use std;
 use std::fmt;
-use std::io::{self, Read};
+use std::io::{self, BufRead};
+use std::marker::PhantomData;
 use std::str;
 use std::{i16, i32, i64, i8};
 use thiserror::Error;
+
+use self::read::{ReadReader, ReadReference, Reference, SliceReader};
+
+pub mod read;
 
 /// A decoder for deserializing bytes from an order preserving format to a value.
 #[derive(Debug)]
@@ -39,24 +44,25 @@ impl serde::de::Error for Error {
 pub type Result<T> = std::result::Result<T, Error>;
 
 /// Deserialize data from the given slice of bytes.
-pub fn deserialize<T>(bytes: &[u8]) -> Result<T>
+pub fn deserialize<'de, T>(bytes: &'de [u8]) -> Result<T>
 where
-	T: for<'de> Deserialize<'de>,
+	T: Deserialize<'de>,
 {
-	deserialize_from(bytes)
-}
-
-/// Deserialize data from the given byte reader.
-pub fn deserialize_from<R, T>(reader: R) -> Result<T>
-where
-	R: io::BufRead,
-	T: for<'de> Deserialize<'de>,
-{
-	let mut deserializer = Deserializer::new(reader);
+	let mut deserializer = Deserializer::new(SliceReader::new(bytes));
 	T::deserialize(&mut deserializer)
 }
 
-impl<R: io::BufRead> Deserializer<R> {
+/// Deserialize data from the given byte reader.
+pub fn deserialize_from<'de, R, T>(reader: R) -> Result<T>
+where
+	R: BufRead,
+	T: Deserialize<'de>,
+{
+	let mut deserializer = Deserializer::new(ReadReader::new(reader));
+	T::deserialize(&mut deserializer)
+}
+
+impl<'de, R: ReadReference<'de>> Deserializer<R> {
 	/// Creates a new ordered bytes encoder whose output will be written to the provided writer.
 	pub fn new(reader: R) -> Deserializer<R> {
 		Deserializer {
@@ -105,7 +111,7 @@ impl<R: io::BufRead> Deserializer<R> {
 
 impl<'de, 'a, R> serde::de::Deserializer<'de> for &'a mut Deserializer<R>
 where
-	R: io::BufRead,
+	R: ReadReference<'de>,
 {
 	type Error = Error;
 
@@ -216,52 +222,37 @@ where
 	where
 		V: Visitor<'de>,
 	{
-		let mut string = String::new();
-		let mut buffer: Vec<u8> = vec![];
-		match self.reader.read_until(0u8, &mut buffer) {
-			Ok(_) => match str::from_utf8(&buffer) {
-				Ok(mut s) => {
-					const EOF: char = '\u{0}';
-					const EOF_STR: &str = "\u{0}";
-					if s.len() >= EOF.len_utf8() {
-						let eof_start = s.len() - EOF.len_utf8();
-						if &s[eof_start..] == EOF_STR {
-							s = &s[..eof_start];
-						}
-					}
-					string.push_str(s)
-				}
-				Err(_) => return Err(Error::InvalidUtf8),
-			},
+		match self.reader.read_reference_until(0u8) {
+			Ok(reference) => {
+				let bytes = match reference {
+					Reference::Borrowed(b) => b,
+					Reference::Copied(b) => b,
+				};
+				let string = std::str::from_utf8(bytes).map_err(|_| Error::InvalidUtf8)?;
+				let c = string.chars().next().ok_or(Error::InvalidUtf8)?;
+				visitor.visit_char(c)
+			}
 			Err(_) => return Err(Error::UnexpectedEof),
 		}
-		visitor.visit_string(string)
 	}
 
 	fn deserialize_str<V>(self, visitor: V) -> Result<V::Value>
 	where
 		V: Visitor<'de>,
 	{
-		let mut string = String::new();
-		let mut buffer: Vec<u8> = vec![];
-		match self.reader.read_until(0u8, &mut buffer) {
-			Ok(_) => match str::from_utf8(&buffer) {
-				Ok(mut s) => {
-					const EOF: char = '\u{0}';
-					const EOF_STR: &str = "\u{0}";
-					if s.len() >= EOF.len_utf8() {
-						let eof_start = s.len() - EOF.len_utf8();
-						if &s[eof_start..] == EOF_STR {
-							s = &s[..eof_start];
-						}
-					}
-					string.push_str(s)
+		match self.reader.read_reference_until(0u8) {
+			Ok(reference) => match reference {
+				Reference::Borrowed(bytes) => {
+					let string = std::str::from_utf8(bytes).map_err(|_| Error::InvalidUtf8)?;
+					visitor.visit_borrowed_str(string)
 				}
-				Err(_) => return Err(Error::InvalidUtf8),
+				Reference::Copied(bytes) => {
+					let string = std::str::from_utf8(bytes).map_err(|_| Error::InvalidUtf8)?;
+					visitor.visit_str(string)
+				}
 			},
 			Err(_) => return Err(Error::UnexpectedEof),
 		}
-		visitor.visit_string(string)
 	}
 
 	fn deserialize_string<V>(self, visitor: V) -> Result<V::Value>
@@ -276,18 +267,22 @@ where
 		V: Visitor<'de>,
 	{
 		let len = self.reader.read_u64::<BE>()?;
-		let mut bytes = vec![];
-		for byte in (&mut self.reader).take(len).bytes() {
-			bytes.push(byte?);
+		match self.reader.read_reference(len as usize)? {
+			Reference::Borrowed(bytes) => visitor.visit_borrowed_bytes(bytes),
+			Reference::Copied(bytes) => visitor.visit_bytes(bytes),
 		}
-		visitor.visit_byte_buf(bytes)
 	}
 
 	fn deserialize_byte_buf<V>(self, visitor: V) -> Result<V::Value>
 	where
 		V: Visitor<'de>,
 	{
-		self.deserialize_bytes(visitor)
+		let len = self.reader.read_u64::<BE>()?;
+		let bytes = match self.reader.read_reference(len as usize)? {
+			Reference::Borrowed(bytes) => bytes,
+			Reference::Copied(bytes) => bytes,
+		};
+		visitor.visit_byte_buf(bytes.into())
 	}
 
 	fn deserialize_option<V>(self, visitor: V) -> Result<V::Value>
@@ -329,16 +324,17 @@ where
 	where
 		V: Visitor<'de>,
 	{
-		struct Access<'a, R>
+		struct Access<'de, 'a, R>
 		where
-			R: 'a + io::BufRead,
+			R: 'a + ReadReference<'de>,
 		{
 			deserializer: &'a mut Deserializer<R>,
+			_spooky: PhantomData<&'de ()>,
 		}
 
-		impl<'de, 'a, R> serde::de::SeqAccess<'de> for Access<'a, R>
+		impl<'de, 'a, R> serde::de::SeqAccess<'de> for Access<'de, 'a, R>
 		where
-			R: io::BufRead,
+			R: ReadReference<'de>,
 		{
 			type Error = Error;
 
@@ -361,6 +357,7 @@ where
 
 		visitor.visit_seq(Access {
 			deserializer: self,
+			_spooky: PhantomData,
 		})
 	}
 
@@ -368,17 +365,18 @@ where
 	where
 		V: Visitor<'de>,
 	{
-		struct Access<'a, R>
+		struct Access<'de, 'a, R>
 		where
-			R: 'a + io::BufRead,
+			R: 'a + ReadReference<'de>,
 		{
 			deserializer: &'a mut Deserializer<R>,
 			len: usize,
+			_spooky: PhantomData<&'de ()>,
 		}
 
-		impl<'de, 'a, R> serde::de::SeqAccess<'de> for Access<'a, R>
+		impl<'de, 'a, R> serde::de::SeqAccess<'de> for Access<'de, 'a, R>
 		where
-			R: io::BufRead,
+			R: ReadReference<'de>,
 		{
 			type Error = Error;
 
@@ -402,6 +400,7 @@ where
 		visitor.visit_seq(Access {
 			deserializer: self,
 			len,
+			_spooky: PhantomData,
 		})
 	}
 
@@ -421,16 +420,17 @@ where
 	where
 		V: Visitor<'de>,
 	{
-		struct Access<'a, R>
+		struct Access<'de, 'a, R>
 		where
-			R: 'a + io::BufRead,
+			R: 'a + ReadReference<'de>,
 		{
 			deserializer: &'a mut Deserializer<R>,
+			_spooky: PhantomData<&'de ()>,
 		}
 
-		impl<'de, 'a, R> serde::de::MapAccess<'de> for Access<'a, R>
+		impl<'de, 'a, R> serde::de::MapAccess<'de> for Access<'de, 'a, R>
 		where
-			R: io::BufRead,
+			R: ReadReference<'de>,
 		{
 			type Error = Error;
 
@@ -460,6 +460,7 @@ where
 
 		visitor.visit_map(Access {
 			deserializer: self,
+			_spooky: PhantomData,
 		})
 	}
 
@@ -486,7 +487,7 @@ where
 	{
 		impl<'de, 'a, R> serde::de::EnumAccess<'de> for &'a mut Deserializer<R>
 		where
-			R: io::BufRead,
+			R: ReadReference<'de>,
 		{
 			type Error = Error;
 			type Variant = Self;
@@ -504,7 +505,7 @@ where
 
 		impl<'de, 'a, R> serde::de::VariantAccess<'de> for &'a mut Deserializer<R>
 		where
-			R: io::BufRead,
+			R: ReadReference<'de>,
 		{
 			type Error = Error;
 
