@@ -105,13 +105,10 @@ pub type Result<T> = std::result::Result<T, Error>;
 /// Serialize data into a vector of `u8` bytes.
 pub fn serialize<T>(v: &T) -> Result<Vec<u8>>
 where
-	T: Serialize,
+	T: Serialize + ?Sized,
 {
 	let mut bytes = vec![];
-	{
-		let mut buffered = io::BufWriter::new(&mut bytes);
-		serialize_into(&mut buffered, v)?;
-	}
+	serialize_into(&mut bytes, v)?;
 	Ok(bytes)
 }
 
@@ -119,7 +116,7 @@ where
 pub fn serialize_into<W, T>(writer: W, value: &T) -> Result<()>
 where
 	W: Write,
-	T: Serialize,
+	T: Serialize + ?Sized,
 {
 	let mut serializer = Serializer::new(writer);
 	value.serialize(&mut serializer)
@@ -211,7 +208,7 @@ where
 			self.writer.write_u16::<BE>((val >> 32) as u16)?;
 			self.writer.write_u32::<BE>(val as u32)
 		} else if val < 1 << 60 {
-			self.writer.write_u64::<BE>((val as u64) | 7 << 60)
+			self.writer.write_u64::<BE>(val | 7 << 60)
 		} else {
 			self.writer.write_u8(8 << 4)?;
 			self.writer.write_u64::<BE>(val)
@@ -290,7 +287,7 @@ where
 	pub fn serialize_var_i64(&mut self, v: i64) -> Result<()> {
 		// The mask is 0 for positive input and u64::MAX for negative input
 		let mask = (v >> 63) as u64;
-		let val = v.abs() as u64 - (1 & mask);
+		let val = v.unsigned_abs() - (1 & mask);
 		if val < 1 << 3 {
 			let masked = (val | (0x10 << 3)) ^ mask;
 			self.writer.write_u8(masked as u8)
@@ -319,7 +316,7 @@ where
 			self.writer.write_u32::<BE>(masked as u32)
 		} else if val < 1 << 59 {
 			let masked = (val | (0x17 << 59)) ^ mask;
-			self.writer.write_u64::<BE>(masked as u64)
+			self.writer.write_u64::<BE>(masked)
 		} else {
 			self.writer.write_u8((0x18 << 3) ^ mask as u8)?;
 			self.writer.write_u64::<BE>(val ^ mask)
@@ -347,12 +344,7 @@ where
 	}
 
 	fn serialize_bool(self, v: bool) -> Result<()> {
-		let b = if v {
-			1
-		} else {
-			0
-		};
-		self.writer.write_u8(b)?;
+		self.writer.write_u8(v as u8)?;
 		Ok(())
 	}
 
@@ -444,7 +436,6 @@ where
 	}
 
 	fn serialize_unit(self) -> Result<()> {
-		self.writer.write_all(&[])?;
 		Ok(())
 	}
 
