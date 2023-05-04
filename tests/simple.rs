@@ -151,6 +151,7 @@ fn strings() {
 	roundtrip!("".to_owned());
 	roundtrip!("hello world!".to_owned());
 	roundtrip!("adiós".to_owned());
+	roundtrip!("a\0b".to_owned());
 	less("aaa", "bbb");
 	less("a", "aa");
 	less("a\x00", "a\x01");
