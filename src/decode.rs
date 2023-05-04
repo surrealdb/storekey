@@ -222,34 +222,49 @@ where
 	where
 		V: Visitor<'de>,
 	{
-		match self.reader.read_reference_until(0u8) {
-			Ok(reference) => {
-				let bytes = match reference {
-					Reference::Borrowed(b) => b,
-					Reference::Copied(b) => b,
-				};
-				let string = std::str::from_utf8(bytes).map_err(|_| Error::InvalidUtf8)?;
-				let c = string.chars().next().ok_or(Error::InvalidUtf8)?;
-				visitor.visit_char(c)
+		// TODO: Replace with std function of the same name once stable.
+		pub fn utf8_char_width(b: u8) -> usize {
+			if b < 128 {
+				1
+			} else if b < 224 {
+				2
+			} else if b < 240 {
+				3
+			} else {
+				4
 			}
-			Err(_) => return Err(Error::UnexpectedEof),
 		}
+
+		let peeked = self.reader.fill_buf()?;
+		let leading = *peeked.first().ok_or(Error::UnexpectedEof)?;
+		let width = utf8_char_width(leading);
+		if peeked.len() < width {
+			return Err(Error::UnexpectedEof);
+		}
+		let s = std::str::from_utf8(&peeked[..width]).map_err(|_| Error::InvalidUtf8)?;
+		debug_assert_eq!(s.chars().count(), 1);
+		let c = s.chars().next().unwrap();
+		self.reader.consume(width);
+		visitor.visit_char(c)
 	}
 
 	fn deserialize_str<V>(self, visitor: V) -> Result<V::Value>
 	where
 		V: Visitor<'de>,
 	{
-		match self.reader.read_reference_until(0u8) {
+		// Removes null-terminator and errors on missing null terminator or invalid UTF-8.
+		fn to_str(bytes: &[u8]) -> Result<&str> {
+			if bytes.last() == Some(&0) {
+				std::str::from_utf8(&bytes[..bytes.len() - 1]).map_err(|_| Error::InvalidUtf8)
+			} else {
+				Err(Error::InvalidUtf8)
+			}
+		}
+
+		match self.reader.read_reference_until(0xFE) {
 			Ok(reference) => match reference {
-				Reference::Borrowed(bytes) => {
-					let string = std::str::from_utf8(bytes).map_err(|_| Error::InvalidUtf8)?;
-					visitor.visit_borrowed_str(string)
-				}
-				Reference::Copied(bytes) => {
-					let string = std::str::from_utf8(bytes).map_err(|_| Error::InvalidUtf8)?;
-					visitor.visit_str(string)
-				}
+				Reference::Borrowed(bytes) => visitor.visit_borrowed_str(to_str(bytes)?),
+				Reference::Copied(bytes) => visitor.visit_str(to_str(bytes)?),
 			},
 			Err(_) => return Err(Error::UnexpectedEof),
 		}
@@ -278,10 +293,7 @@ where
 		V: Visitor<'de>,
 	{
 		let len = self.reader.read_u64::<BE>()?;
-		let bytes = match self.reader.read_reference(len as usize)? {
-			Reference::Borrowed(bytes) => bytes,
-			Reference::Copied(bytes) => bytes,
-		};
+		let bytes = self.reader.read_reference(len as usize)?.either();
 		visitor.visit_byte_buf(bytes.into())
 	}
 

@@ -403,16 +403,15 @@ where
 	}
 
 	fn serialize_char(self, v: char) -> Result<()> {
-		if v == 0 as char {
-			return Err(Error::Message("cannot serialize NUL char".to_owned()));
-		}
-		self.serialize_str(&v.to_string())?;
+		let mut buf = [0; 4];
+		let c = v.encode_utf8(&mut buf);
+		self.writer.write_all(c.as_bytes())?;
 		Ok(())
 	}
 
 	fn serialize_str(self, v: &str) -> Result<()> {
 		self.writer.write_all(v.as_bytes())?;
-		self.writer.write_u8(0)?;
+		self.writer.write_all(&[0, 0xFE])?;
 		Ok(())
 	}
 

@@ -58,7 +58,6 @@ fn option() {
 }
 
 #[test]
-
 fn int() {
 	less(0, 1);
 	less(30, 1000);
@@ -112,9 +111,8 @@ fn chars() {
 		}
 	}
 
-	expect('a', &[b'a', 0]);
-
-	assert!(serialize(&'\0').is_err());
+	expect('a', &[b'a']);
+	expect('π', &[0xcf, 0x80]);
 }
 
 #[test]
@@ -138,29 +136,27 @@ fn enums() {
 }
 
 #[test]
-
 fn vector() {
 	roundtrip!(vec![2, 3, 4, 5]);
 }
 
 #[test]
-
 fn bytes() {
 	roundtrip!(vec![5u8; 9]);
 }
 
 #[test]
-
 fn strings() {
-	expect("foo".to_owned(), b"foo\0");
+	expect("foo".to_owned(), b"foo\0\xFE");
 	roundtrip!("".to_owned());
 	roundtrip!("hello world!".to_owned());
 	roundtrip!("adiós".to_owned());
 	less("aaa", "bbb");
+	less("a", "aa");
+	less("a\x00", "a\x01");
 }
 
 #[test]
-
 fn borrowed_bytes() {
 	#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 	struct Borrowed<'a> {
@@ -185,14 +181,14 @@ fn borrowed_string() {
 	}
 
 	assert_eq!(
-		deserialize::<Borrowed<'_>>(b"\0\0").unwrap(),
+		deserialize::<Borrowed<'_>>(b"\0\xFE\0\xFE").unwrap(),
 		Borrowed {
 			one: "",
 			two: ""
 		}
 	);
 	assert_eq!(
-		deserialize::<Borrowed<'_>>(b"foo\0test\0").unwrap(),
+		deserialize::<Borrowed<'_>>(b"foo\0\xFEtest\0\xFE").unwrap(),
 		Borrowed {
 			one: "foo",
 			two: "test",

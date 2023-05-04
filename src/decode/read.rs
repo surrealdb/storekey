@@ -8,6 +8,16 @@ pub enum Reference<'b, 'c> {
 	Copied(&'c [u8]),
 }
 
+impl<'a> Reference<'a, 'a> {
+	/// Use when the lifetime doesn't matter.
+	pub(crate) fn either(self) -> &'a [u8] {
+		match self {
+			Self::Borrowed(b) => b,
+			Self::Copied(b) => b,
+		}
+	}
+}
+
 /// For zero-copy reading.
 pub trait ReadReference<'de>: Read + BufRead {
 	/// Reads an exact number of bytes.
