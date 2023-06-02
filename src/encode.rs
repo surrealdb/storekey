@@ -39,10 +39,12 @@ use thiserror::Error;
 ///
 /// `f32` and `f64` are serialized into 4 and 8 bytes of output, respectively. Order is preserved
 /// by encoding the value, or the bitwise complement of the value if negative, into bytes in
-/// big-endian format. `NAN` values will sort after all other values. In general, it is unwise to
+/// big-endian format. The order is identical to [`f64::total_cmp`]. In general, it is unwise to
 /// use IEEE 754 floating point values in keys, because rounding errors are pervasive.  It is
 /// typically hard or impossible to use an approximate 'epsilon' approach when using keys for
 /// lookup.
+///
+/// [`f64::total_cmp`]: https://doc.rust-lang.org/std/primitive.f64.html#method.total_cmp
 ///
 /// ##### Characters
 ///
