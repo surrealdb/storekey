@@ -88,9 +88,22 @@ fn fuzz_varint() {
 
 #[test]
 fn floats() {
+	const NEGATIVE_NAN: u64 = 18444492273895866368;
 	macro_rules! float {
 		($size: ty) => {
-			let ordering = [<$size>::NEG_INFINITY, -1.0, 0.0, 1.0, <$size>::INFINITY, <$size>::NAN];
+			let ordering = [
+				f64::from_bits(NEGATIVE_NAN) as $size,
+				<$size>::NEG_INFINITY,
+				-10.0,
+				-1.0,
+				-<$size>::MIN_POSITIVE,
+				0.0,
+				<$size>::MIN_POSITIVE,
+				1.0,
+				10.0,
+				<$size>::INFINITY,
+				<$size>::NAN,
+			];
 			for window in ordering.windows(2) {
 				less(&window[0], &window[1]);
 			}
