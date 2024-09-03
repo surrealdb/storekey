@@ -1,5 +1,6 @@
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::fmt::Debug;
+use rust_decimal::Decimal;
 use storekey::{deserialize, serialize};
 
 macro_rules! roundtrip_inner {
@@ -249,4 +250,22 @@ fn structs() {
 	println!("{:?}", serialize(&lq));
 
 	roundtrip!(lq);
+}
+
+#[test]
+fn decimal() {
+	let ordering = [
+		Decimal::MIN,
+		Decimal::from(-10),
+		Decimal::NEGATIVE_ONE,
+		Decimal::ZERO,
+		Decimal::ONE,
+		Decimal::TWO,
+		Decimal::ONE_HUNDRED,
+		Decimal::ONE_THOUSAND,
+		Decimal::MAX,
+	];
+	for window in ordering.windows(2) {
+		less(&window[0], &window[1]);
+	}
 }
