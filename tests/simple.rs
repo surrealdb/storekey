@@ -1,6 +1,7 @@
+use rust_decimal::Decimal;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::fmt::Debug;
-use rust_decimal::Decimal;
+use rust_decimal::prelude::FromPrimitive;
 use storekey::{deserialize, serialize};
 
 macro_rules! roundtrip_inner {
@@ -256,11 +257,15 @@ fn structs() {
 fn decimal() {
 	let ordering = [
 		Decimal::MIN,
-		Decimal::from(-10),
+		-Decimal::TEN,
+		Decimal::from_f32(-3.141592654).unwrap(),
+		Decimal::from_f32(-3.14).unwrap(),
 		Decimal::NEGATIVE_ONE,
 		Decimal::ZERO,
 		Decimal::ONE,
 		Decimal::TWO,
+		Decimal::from_f32(3.14).unwrap(),
+		Decimal::from_f32(3.141592654).unwrap(),
 		Decimal::ONE_HUNDRED,
 		Decimal::ONE_THOUSAND,
 		Decimal::MAX,

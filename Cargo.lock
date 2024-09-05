@@ -344,8 +344,7 @@ dependencies = [
 [[package]]
 name = "rust_decimal"
 version = "1.36.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b082d80e3e3cc52b2ed634388d436fe1f4de6af5786cc2de9ba9737527bdf555"
+source = "git+https://github.com/emmanuel-keller/rust-decimal.git?branch=emmanuel/lexical_serialization#2e1d91f4afe5964a1393fe80f708332eb2c041f1"
 dependencies = [
  "arrayvec",
  "borsh",

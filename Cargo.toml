@@ -16,7 +16,7 @@ byteorder = "1.4.3"
 memchr = "2.5.0"
 serde = { version = "1.0.160", features = ["derive"] }
 thiserror = "1.0.40"
-rust_decimal = "1.36.0"
+rust_decimal = { git = "https://github.com/emmanuel-keller/rust-decimal.git", branch = "emmanuel/lexical_serialization", default-features = false, features = ["serde-lexical"] }
 
 [dev-dependencies]
 serde_bytes = "0.11.9"
