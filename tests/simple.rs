@@ -1,7 +1,7 @@
+use rust_decimal::prelude::FromPrimitive;
 use rust_decimal::Decimal;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::fmt::Debug;
-use rust_decimal::prelude::FromPrimitive;
 use storekey::{deserialize, serialize};
 
 macro_rules! roundtrip_inner {
