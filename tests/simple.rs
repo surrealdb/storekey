@@ -1,3 +1,5 @@
+use rust_decimal::prelude::FromPrimitive;
+use rust_decimal::Decimal;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::fmt::Debug;
 use storekey::{deserialize, serialize};
@@ -249,4 +251,26 @@ fn structs() {
 	println!("{:?}", serialize(&lq));
 
 	roundtrip!(lq);
+}
+
+#[test]
+fn decimal() {
+	let ordering = [
+		Decimal::MIN,
+		-Decimal::TEN,
+		Decimal::from_f32(-3.141592654).unwrap(),
+		Decimal::from_f32(-3.14).unwrap(),
+		Decimal::NEGATIVE_ONE,
+		Decimal::ZERO,
+		Decimal::ONE,
+		Decimal::TWO,
+		Decimal::from_f32(3.14).unwrap(),
+		Decimal::from_f32(3.141592654).unwrap(),
+		Decimal::ONE_HUNDRED,
+		Decimal::ONE_THOUSAND,
+		Decimal::MAX,
+	];
+	for window in ordering.windows(2) {
+		less(&window[0], &window[1]);
+	}
 }
