@@ -3,7 +3,11 @@ name = "storekey"
 publish = true
 edition = "2021"
 version = "0.5.0"
-authors = ["Tobie Morgan Hitchcock <tobie@surrealdb.com>", "Michal Hornicky <mhornick@redhat.com>", "Dan Burkert <dan@danburkert.com>"]
+authors = [
+	"Tobie Morgan Hitchcock <tobie@surrealdb.com>",
+	"Michal Hornicky <mhornick@redhat.com>",
+	"Dan Burkert <dan@danburkert.com>",
+]
 description = "Lexicographic sort-order preserving binary encoding format for key-value stores"
 repository = "https://github.com/surrealdb/storekey"
 homepage = "https://github.com/surrealdb/storekey"
@@ -12,10 +16,10 @@ categories = ["encoding"]
 license = "Apache-2.0"
 
 [dependencies]
-byteorder = "1.4.3"
-memchr = "2.5.0"
-serde = { version = "1.0.160", features = ["derive"] }
-thiserror = "1.0.40"
+byteorder = "1.5.0"
+memchr = "2.7.4"
+serde = { version = "1.0.219", features = ["derive"] }
+thiserror = "2.0.12"
 
 [dev-dependencies]
-serde_bytes = "0.11.9"
+serde_bytes = "0.11.17"
