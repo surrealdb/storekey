@@ -99,7 +99,7 @@ impl<'a> SliceReader<'a> {
 	}
 }
 
-impl<'a> Read for SliceReader<'a> {
+impl Read for SliceReader<'_> {
 	#[inline]
 	fn read(&mut self, buf: &mut [u8]) -> Result<usize, io::Error> {
 		self.inner.read(buf)
@@ -111,7 +111,7 @@ impl<'a> Read for SliceReader<'a> {
 	}
 }
 
-impl<'a> BufRead for SliceReader<'a> {
+impl BufRead for SliceReader<'_> {
 	fn fill_buf(&mut self) -> io::Result<&[u8]> {
 		self.inner.fill_buf()
 	}

@@ -2,7 +2,6 @@ use byteorder::{WriteBytesExt, BE};
 use serde::{self, Serialize};
 use std::fmt;
 use std::io::{self, Write};
-use std::{self, i16, i32, i64, i8};
 use thiserror::Error;
 
 /// A serializer for a byte format that preserves lexicographic sort order.
@@ -193,24 +192,24 @@ where
 		if val < 1 << 4 {
 			self.writer.write_u8(val as u8)
 		} else if val < 1 << 12 {
-			self.writer.write_u16::<BE>((val as u16) | 1 << 12)
+			self.writer.write_u16::<BE>((val as u16) | (1 << 12))
 		} else if val < 1 << 20 {
-			self.writer.write_u8(((val >> 16) as u8) | 2 << 4)?;
+			self.writer.write_u8(((val >> 16) as u8) | (2 << 4))?;
 			self.writer.write_u16::<BE>(val as u16)
 		} else if val < 1 << 28 {
-			self.writer.write_u32::<BE>((val as u32) | 3 << 28)
+			self.writer.write_u32::<BE>((val as u32) | (3 << 28))
 		} else if val < 1 << 36 {
-			self.writer.write_u8(((val >> 32) as u8) | 4 << 4)?;
+			self.writer.write_u8(((val >> 32) as u8) | (4 << 4))?;
 			self.writer.write_u32::<BE>(val as u32)
 		} else if val < 1 << 44 {
-			self.writer.write_u16::<BE>(((val >> 32) as u16) | 5 << 12)?;
+			self.writer.write_u16::<BE>(((val >> 32) as u16) | (5 << 12))?;
 			self.writer.write_u32::<BE>(val as u32)
 		} else if val < 1 << 52 {
-			self.writer.write_u8(((val >> 48) as u8) | 6 << 4)?;
+			self.writer.write_u8(((val >> 48) as u8) | (6 << 4))?;
 			self.writer.write_u16::<BE>((val >> 32) as u16)?;
 			self.writer.write_u32::<BE>(val as u32)
 		} else if val < 1 << 60 {
-			self.writer.write_u64::<BE>(val | 7 << 60)
+			self.writer.write_u64::<BE>(val | (7 << 60))
 		} else {
 			self.writer.write_u8(8 << 4)?;
 			self.writer.write_u64::<BE>(val)
@@ -327,7 +326,7 @@ where
 	}
 }
 
-impl<'a, W> serde::Serializer for &'a mut Serializer<W>
+impl<W> serde::Serializer for &mut Serializer<W>
 where
 	W: Write,
 {
@@ -524,7 +523,7 @@ where
 
 // Compound Implementations.
 
-impl<'a, W> serde::ser::SerializeSeq for &'a mut Serializer<W>
+impl<W> serde::ser::SerializeSeq for &mut Serializer<W>
 where
 	W: Write,
 {
@@ -544,7 +543,7 @@ where
 	}
 }
 
-impl<'a, W> serde::ser::SerializeTuple for &'a mut Serializer<W>
+impl<W> serde::ser::SerializeTuple for &mut Serializer<W>
 where
 	W: Write,
 {
@@ -563,7 +562,7 @@ where
 	}
 }
 
-impl<'a, W> serde::ser::SerializeTupleStruct for &'a mut Serializer<W>
+impl<W> serde::ser::SerializeTupleStruct for &mut Serializer<W>
 where
 	W: Write,
 {
@@ -582,7 +581,7 @@ where
 	}
 }
 
-impl<'a, W> serde::ser::SerializeTupleVariant for &'a mut Serializer<W>
+impl<W> serde::ser::SerializeTupleVariant for &mut Serializer<W>
 where
 	W: Write,
 {
@@ -601,7 +600,7 @@ where
 	}
 }
 
-impl<'a, W> serde::ser::SerializeMap for &'a mut Serializer<W>
+impl<W> serde::ser::SerializeMap for &mut Serializer<W>
 where
 	W: Write,
 {
@@ -628,7 +627,7 @@ where
 	}
 }
 
-impl<'a, W> serde::ser::SerializeStruct for &'a mut Serializer<W>
+impl<W> serde::ser::SerializeStruct for &mut Serializer<W>
 where
 	W: Write,
 {
@@ -647,7 +646,7 @@ where
 	}
 }
 
-impl<'a, W> serde::ser::SerializeStructVariant for &'a mut Serializer<W>
+impl<W> serde::ser::SerializeStructVariant for &mut Serializer<W>
 where
 	W: Write,
 {

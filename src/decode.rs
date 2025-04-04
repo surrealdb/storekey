@@ -6,7 +6,6 @@ use std::fmt;
 use std::io::{self, BufRead};
 use std::marker::PhantomData;
 use std::str;
-use std::{i16, i32, i64, i8};
 use thiserror::Error;
 
 use self::read::{ReadReader, ReadReference, Reference, SliceReader};
@@ -109,7 +108,7 @@ impl<'de, R: ReadReference<'de>> Deserializer<R> {
 	}
 }
 
-impl<'de, 'a, R> serde::de::Deserializer<'de> for &'a mut Deserializer<R>
+impl<'de, R> serde::de::Deserializer<'de> for &mut Deserializer<R>
 where
 	R: ReadReference<'de>,
 {
@@ -232,7 +231,7 @@ where
 				let c = string.chars().next().ok_or(Error::InvalidUtf8)?;
 				visitor.visit_char(c)
 			}
-			Err(_) => return Err(Error::UnexpectedEof),
+			Err(_) => Err(Error::UnexpectedEof),
 		}
 	}
 
@@ -251,7 +250,7 @@ where
 					visitor.visit_str(string)
 				}
 			},
-			Err(_) => return Err(Error::UnexpectedEof),
+			Err(_) => Err(Error::UnexpectedEof),
 		}
 	}
 
@@ -332,7 +331,7 @@ where
 			_spooky: PhantomData<&'de ()>,
 		}
 
-		impl<'de, 'a, R> serde::de::SeqAccess<'de> for Access<'de, 'a, R>
+		impl<'de, R> serde::de::SeqAccess<'de> for Access<'de, '_, R>
 		where
 			R: ReadReference<'de>,
 		{
@@ -374,7 +373,7 @@ where
 			_spooky: PhantomData<&'de ()>,
 		}
 
-		impl<'de, 'a, R> serde::de::SeqAccess<'de> for Access<'de, 'a, R>
+		impl<'de, R> serde::de::SeqAccess<'de> for Access<'de, '_, R>
 		where
 			R: ReadReference<'de>,
 		{
@@ -428,7 +427,7 @@ where
 			_spooky: PhantomData<&'de ()>,
 		}
 
-		impl<'de, 'a, R> serde::de::MapAccess<'de> for Access<'de, 'a, R>
+		impl<'de, R> serde::de::MapAccess<'de> for Access<'de, '_, R>
 		where
 			R: ReadReference<'de>,
 		{
@@ -485,60 +484,6 @@ where
 	where
 		V: Visitor<'de>,
 	{
-		impl<'de, 'a, R> serde::de::EnumAccess<'de> for &'a mut Deserializer<R>
-		where
-			R: ReadReference<'de>,
-		{
-			type Error = Error;
-			type Variant = Self;
-
-			fn variant_seed<V>(self, seed: V) -> Result<(V::Value, Self::Variant)>
-			where
-				V: serde::de::DeserializeSeed<'de>,
-			{
-				let idx: u32 = serde::de::Deserialize::deserialize(&mut *self)?;
-				let val: Result<_> =
-					seed.deserialize(serde::de::IntoDeserializer::into_deserializer(idx));
-				Ok((val?, self))
-			}
-		}
-
-		impl<'de, 'a, R> serde::de::VariantAccess<'de> for &'a mut Deserializer<R>
-		where
-			R: ReadReference<'de>,
-		{
-			type Error = Error;
-
-			fn unit_variant(self) -> Result<()> {
-				Ok(())
-			}
-
-			fn newtype_variant_seed<T>(self, seed: T) -> Result<T::Value>
-			where
-				T: serde::de::DeserializeSeed<'de>,
-			{
-				serde::de::DeserializeSeed::deserialize(seed, self)
-			}
-
-			fn tuple_variant<V>(self, len: usize, visitor: V) -> Result<V::Value>
-			where
-				V: serde::de::Visitor<'de>,
-			{
-				serde::de::Deserializer::deserialize_tuple(self, len, visitor)
-			}
-
-			fn struct_variant<V>(
-				self,
-				fields: &'static [&'static str],
-				visitor: V,
-			) -> Result<V::Value>
-			where
-				V: serde::de::Visitor<'de>,
-			{
-				serde::de::Deserializer::deserialize_tuple(self, fields.len(), visitor)
-			}
-		}
-
 		visitor.visit_enum(self)
 	}
 
@@ -554,5 +499,54 @@ where
 		V: serde::de::Visitor<'de>,
 	{
 		Err(Error::DeserializeAnyUnsupported)
+	}
+}
+
+impl<'de, R> serde::de::EnumAccess<'de> for &mut Deserializer<R>
+where
+	R: ReadReference<'de>,
+{
+	type Error = Error;
+	type Variant = Self;
+
+	fn variant_seed<V>(self, seed: V) -> Result<(V::Value, Self::Variant)>
+	where
+		V: serde::de::DeserializeSeed<'de>,
+	{
+		let idx: u32 = serde::de::Deserialize::deserialize(&mut *self)?;
+		let val: Result<_> = seed.deserialize(serde::de::IntoDeserializer::into_deserializer(idx));
+		Ok((val?, self))
+	}
+}
+
+impl<'de, R> serde::de::VariantAccess<'de> for &mut Deserializer<R>
+where
+	R: ReadReference<'de>,
+{
+	type Error = Error;
+
+	fn unit_variant(self) -> Result<()> {
+		Ok(())
+	}
+
+	fn newtype_variant_seed<T>(self, seed: T) -> Result<T::Value>
+	where
+		T: serde::de::DeserializeSeed<'de>,
+	{
+		serde::de::DeserializeSeed::deserialize(seed, self)
+	}
+
+	fn tuple_variant<V>(self, len: usize, visitor: V) -> Result<V::Value>
+	where
+		V: serde::de::Visitor<'de>,
+	{
+		serde::de::Deserializer::deserialize_tuple(self, len, visitor)
+	}
+
+	fn struct_variant<V>(self, fields: &'static [&'static str], visitor: V) -> Result<V::Value>
+	where
+		V: serde::de::Visitor<'de>,
+	{
+		serde::de::Deserializer::deserialize_tuple(self, fields.len(), visitor)
 	}
 }
