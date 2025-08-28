@@ -1,42 +1,96 @@
-//! Binary encoding for Rust values which preserves lexicographic sort order. Order-preserving
-//! encoding is useful for creating keys for sorted key-value stores with byte string typed keys,
-//! such as [leveldb](https://github.com/google/leveldb) and
-//! [sled](https://github.com/spacejam/sled).
-//!
-//! `storekey` is *not* a self-describing format. In other words, Type information is *not*
-//! serialized alongside values, and thus the type of serialized data must be known in order to
-//! perform deserialization.
-//!
-//! #### Supported Data Types
-//!
-//! `storekey` currently supports all Rust primitives, strings, options, structs, enums, vecs, and
-//! tuples. See **Serializer** for details on the serialization format.
-//!
-//! #### Type Evolution
-//!
-//! In general, the exact type of a serialized value must be known in order to correctly
-//! deserialize it. For structs and enums, the type is effectively frozen once any values of the
-//! type have been serialized: changes to the struct or enum will cause deserialization of already
-//! serialized values to fail or return incorrect values. The only exception is adding new variants
-//! to the end of an existing enum. Enum variants may *not* change type, be removed, or be
-//! reordered. All changes to structs, including adding, removing, reordering, or changing the type
-//! of a field are forbidden.
-//!
-//! These restrictions lead to a few best-practices when using `storekey` serialization:
-//!
-//! * Don't use `storekey` unless you need lexicographic ordering of serialized values! A more
-//!   general encoding library such as [Cap'n Proto](https://github.com/dwrensha/capnproto-rust) or
-//!   [bincode](https://github.com/TyOverby/binary-encode) will serve you better if this feature is
-//!   not necessary.
-//! * If you persist serialized values for longer than the life of a process (i.e. you write the
-//!   serialized values to a file or a database), consider using an enum as a top-level wrapper
-//!   type. This will allow you to seamlessly add a new variant when you need to change the key
-//!   format in a backwards-compatible manner (the different key types will sort seperately). If
-//!   your enum has less than 16 variants, then the overhead is just a single byte in serialized
-//!   output.
+use std::fmt;
+use std::io::{self, BufRead, Write};
+use std::result::Result as StdResult;
 
-pub mod decode;
-pub mod encode;
+mod decode;
+mod encode;
+mod reader;
+#[cfg(test)]
+mod test;
+mod to_escaped;
+mod types;
+mod writer;
 
-pub use self::decode::{deserialize, deserialize_from, Deserializer};
-pub use self::encode::{serialize, serialize_into, Serializer};
+pub use reader::BorrowReader;
+pub use reader::Reader;
+pub use to_escaped::ToEscaped;
+pub use writer::Writer;
+
+pub type Result<T> = StdResult<T, Error>;
+
+#[derive(Debug)]
+pub enum Error {
+	Io(io::Error),
+	UnexpectedEnd,
+	BytesRemaining,
+	Utf8,
+}
+
+impl fmt::Display for Error {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		match self {
+			Error::Io(error) => write!(f, "Io Error: {error}"),
+			Error::UnexpectedEnd => {
+				write!(f, "Reader did not have enough data to properly decode type")
+			}
+			Error::BytesRemaining => {
+				write!(f, "Reader had data remaining after type was fully decoded.")
+			}
+			Error::Utf8 => write!(f, "Could not decode string due to invalid utf8"),
+		}
+	}
+}
+impl std::error::Error for Error {}
+
+impl From<io::Error> for Error {
+	fn from(value: io::Error) -> Self {
+		Error::Io(value)
+	}
+}
+
+/// Types which can be encoded to storekey format.
+pub trait Encode {
+	fn encode<W: Write>(&self, w: &mut Writer<W>) -> Result<()>;
+}
+
+/// Types which can be decoded from storekey format with owned ownership.
+pub trait Decode: Sized {
+	fn decode<R: BufRead>(r: &mut Reader<R>) -> Result<Self>;
+}
+
+/// Types which can be decoded from storekey format with borrowed ownership.
+pub trait BorrowDecode<'de>: Sized {
+	fn borrow_decode(r: &mut BorrowReader<'de>) -> Result<Self>;
+}
+
+pub fn encode<W: Write, E: Encode>(w: W, e: &E) -> Result<()> {
+	let mut writer = Writer::new(w);
+	e.encode(&mut writer)
+}
+
+pub fn encode_vec<E: Encode>(e: &E) -> Vec<u8> {
+	let mut buffer = Vec::new();
+	let mut writer = Writer::new(&mut buffer);
+	// Encoding should only fail on io error, but as this is encoded to vector it should not be
+	// able to fail.
+	e.encode(&mut writer).unwrap();
+	buffer
+}
+
+pub fn decode<R: BufRead, D: Decode>(r: R) -> Result<D> {
+	let mut reader = Reader::new(r);
+	let res = D::decode(&mut reader)?;
+	if !reader.is_empty()? {
+		return Err(Error::BytesRemaining);
+	}
+	Ok(res)
+}
+
+pub fn decode_borrow<'de, D: BorrowDecode<'de>>(r: &'de [u8]) -> Result<D> {
+	let mut reader = BorrowReader::new(r);
+	let res = D::borrow_decode(&mut reader)?;
+	if !reader.is_empty() {
+		return Err(Error::BytesRemaining);
+	}
+	Ok(res)
+}
