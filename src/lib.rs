@@ -11,6 +11,7 @@ mod reader;
 mod to_escaped;
 mod types;
 mod writer;
+mod features;
 
 #[cfg(test)]
 mod test;

@@ -22,7 +22,9 @@ license = "Apache-2.0"
 default = ["derive"]
 
 derive = ["storekey_derive"]
+uuid = ["dep:uuid"]
 
 [dependencies]
 storekey_derive = { version = "0.6.0", path = "storekey_derive", optional = true }
+uuid = { version = "1.17", optional = true }
 
