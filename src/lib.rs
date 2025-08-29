@@ -2,18 +2,23 @@ use std::fmt;
 use std::io::{self, BufRead, Write};
 use std::result::Result as StdResult;
 
+#[cfg(feature = "derive")]
+pub use storekey_derive::{BorrowDecode, Decode, Encode, ToEscaped};
+
 mod decode;
 mod encode;
 mod reader;
-#[cfg(test)]
-mod test;
 mod to_escaped;
 mod types;
 mod writer;
 
+#[cfg(test)]
+mod test;
+
 pub use reader::BorrowReader;
 pub use reader::Reader;
 pub use to_escaped::ToEscaped;
+pub use types::{EscapedChars, EscapedIter, EscapedSlice, EscapedStr};
 pub use writer::Writer;
 
 pub type Result<T> = StdResult<T, Error>;
@@ -23,6 +28,7 @@ pub enum Error {
 	Io(io::Error),
 	UnexpectedEnd,
 	BytesRemaining,
+	UnexpectedDiscriminant,
 	Utf8,
 }
 
@@ -35,6 +41,9 @@ impl fmt::Display for Error {
 			}
 			Error::BytesRemaining => {
 				write!(f, "Reader had data remaining after type was fully decoded.")
+			}
+			Error::UnexpectedDiscriminant => {
+				write!(f, "Found an unexpected discriminant when deserializing an enum.")
 			}
 			Error::Utf8 => write!(f, "Could not decode string due to invalid utf8"),
 		}
@@ -63,12 +72,12 @@ pub trait BorrowDecode<'de>: Sized {
 	fn borrow_decode(r: &mut BorrowReader<'de>) -> Result<Self>;
 }
 
-pub fn encode<W: Write, E: Encode>(w: W, e: &E) -> Result<()> {
+pub fn encode<W: Write, E: Encode + ?Sized>(w: W, e: &E) -> Result<()> {
 	let mut writer = Writer::new(w);
 	e.encode(&mut writer)
 }
 
-pub fn encode_vec<E: Encode>(e: &E) -> Vec<u8> {
+pub fn encode_vec<E: Encode + ?Sized>(e: &E) -> Vec<u8> {
 	let mut buffer = Vec::new();
 	let mut writer = Writer::new(&mut buffer);
 	// Encoding should only fail on io error, but as this is encoded to vector it should not be

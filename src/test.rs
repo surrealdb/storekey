@@ -1,5 +1,6 @@
 use crate::{decode, decode_borrow, encode_vec, BorrowDecode, Decode, Encode};
 use std::{
+	borrow::Cow,
 	collections::{BTreeMap, HashMap},
 	fmt::Debug,
 	hash::Hash,
@@ -222,4 +223,19 @@ fn ordering() {
 	test_order(b::<u8, u8, 0>([]), b([]));
 	test_order(b([(0u8, 1u8)]), b([(0u8, 0u8)]));
 	test_order(b([(0u8, 0u8), (1, 1)]), b([(0, 0), (1, 0)]));
+}
+
+#[test]
+fn cow() {
+	let data = "hello";
+	let enc = encode_vec(data);
+	let dec: Cow<'_, str> = decode_borrow(enc.as_slice()).unwrap();
+	assert_eq!(data, dec.as_ref());
+	assert!(matches!(dec, Cow::Borrowed(_)));
+
+	let data = "hello\x00";
+	let enc = encode_vec(data);
+	let dec: Cow<'_, str> = decode_borrow(enc.as_slice()).unwrap();
+	assert_eq!(data, dec.as_ref());
+	assert!(matches!(dec, Cow::Owned(_)));
 }
