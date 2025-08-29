@@ -38,6 +38,12 @@ impl Encode for &EscapedSlice {
 	}
 }
 
+impl<'de> BorrowDecode<'de> for &'de EscapedSlice {
+	fn borrow_decode(w: &mut BorrowReader<'de>) -> Result<Self> {
+		w.read_escaped_slice()
+	}
+}
+
 impl fmt::Debug for EscapedSlice {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		let mut escaped = false;

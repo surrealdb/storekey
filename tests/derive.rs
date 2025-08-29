@@ -1,7 +1,6 @@
 use std::fmt::Debug;
 use storekey::{
-	decode, decode_borrow, encode_vec, BorrowDecode, Decode, Encode, EscapedSlice, EscapedStr,
-	ToEscaped,
+	decode, decode_borrow, encode_vec, BorrowDecode, Decode, Encode, EscapedStr, ToEscaped,
 };
 
 fn roundtrip<T: Encode + Decode + for<'a> BorrowDecode<'a> + Debug + PartialEq>(a: T) {
@@ -103,6 +102,20 @@ fn lifetime_struct() {
 struct TestEscaped<'a> {
 	slice: &'a [u8],
 	str: &'a str,
+}
+
+#[test]
+fn escaped() {
+	let before = TestEscaped {
+		slice: &[0, 1],
+		str: "\x00\x01",
+	};
+	let encode = encode_vec(&before);
+	let after: TestEscapedEscaped = decode_borrow(encode.as_slice()).unwrap();
+	assert_eq!(before.slice, after.slice);
+	assert_eq!(before.str, after.str);
+	let encode_after = encode_vec(&after);
+	assert_eq!(encode, encode_after);
 }
 
 #[derive(Encode, Decode, BorrowDecode, PartialEq, Debug)]

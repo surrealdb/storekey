@@ -363,7 +363,7 @@ pub fn to_escaped(input: TokenStream) -> Result<TokenStream> {
 					let ty = &x.ty;
 					quote! {
 						#(#attr)*
-						#vis #ident #colon_token <#ty as ::storekey::ToEscaped>::Escaped
+						#vis #ident #colon_token <#ty as ::storekey::ToEscaped>::Escaped<#old_lifetime>
 					}
 				});
 
@@ -380,7 +380,7 @@ pub fn to_escaped(input: TokenStream) -> Result<TokenStream> {
 					let ty = &x.ty;
 					quote! {
 						#(#attr)*
-						#vis  <#ty as ::storekey::ToEscaped>::Escaped
+						#vis  <#ty as ::storekey::ToEscaped>::Escaped<#old_lifetime>
 					}
 				});
 				quote! {
@@ -408,7 +408,7 @@ pub fn to_escaped(input: TokenStream) -> Result<TokenStream> {
 							let ty = &f.ty;
 							quote! {
 								#(#attr)*
-								#vis #ident #colon_token <#ty as ::storekey::ToEscaped>::Escaped
+								#vis #ident #colon_token <#ty as ::storekey::ToEscaped>::Escaped<#old_lifetime>
 							}
 						});
 						variants.push(quote! {
@@ -424,7 +424,7 @@ pub fn to_escaped(input: TokenStream) -> Result<TokenStream> {
 							let ty = &x.ty;
 							quote! {
 								#(#attr)*
-								#vis  <#ty as ::storekey::ToEscaped>::Escaped
+								#vis  <#ty as ::storekey::ToEscaped>::Escaped<#old_lifetime>
 							}
 						});
 						variants.push(quote! {
