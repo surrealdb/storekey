@@ -1,10 +1,9 @@
+use std::borrow::Cow;
+use std::collections::{BTreeMap, HashMap};
+use std::fmt::Debug;
+use std::hash::Hash;
+
 use crate::{decode, decode_borrow, encode_vec, BorrowDecode, Decode, Encode};
-use std::{
-	borrow::Cow,
-	collections::{BTreeMap, HashMap},
-	fmt::Debug,
-	hash::Hash,
-};
 
 macro_rules! test_primitives {
 	($t:ident,$name:ident) => {

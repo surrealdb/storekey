@@ -1,12 +1,11 @@
-use std::{
-	borrow::Cow,
-	collections::{BTreeMap, HashMap},
-	hash::{BuildHasher, Hash},
-	io::BufRead,
-	mem::MaybeUninit,
-};
+use std::borrow::Cow;
+use std::collections::{BTreeMap, HashMap};
+use std::hash::{BuildHasher, Hash};
+use std::io::BufRead;
+use std::mem::MaybeUninit;
 
-use super::{reader::BorrowReader, BorrowDecode, Decode, Reader, Result};
+use super::reader::BorrowReader;
+use super::{BorrowDecode, Decode, Reader, Result};
 
 impl Decode for String {
 	fn decode<R: BufRead>(r: &mut Reader<R>) -> Result<Self> {

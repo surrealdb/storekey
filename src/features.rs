@@ -1,7 +1,8 @@
 #[cfg(feature = "uuid")]
 mod uuid {
-	use ::uuid::Uuid;
 	use std::io::{BufRead, Write};
+
+	use ::uuid::Uuid;
 
 	use crate::{BorrowDecode, BorrowReader, Decode, Encode, Reader, Result, Writer};
 

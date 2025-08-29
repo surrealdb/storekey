@@ -1,6 +1,7 @@
 use std::io::Write;
 
-use super::{types::EscapedSlice, Result};
+use super::types::EscapedSlice;
+use super::Result;
 
 #[derive(Debug)]
 pub struct Writer<W: Write> {

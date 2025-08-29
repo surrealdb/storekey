@@ -1,10 +1,9 @@
-use std::{
-	fmt::{self},
-	io::Write,
-	slice, str,
-};
+use std::fmt::{self};
+use std::io::Write;
+use std::{slice, str};
 
-use super::{reader::BorrowReader, BorrowDecode, Encode, Result, Writer};
+use super::reader::BorrowReader;
+use super::{BorrowDecode, Encode, Result, Writer};
 
 /// A slice buffer which is in an escaped format:
 /// containing possible 0u8 and 1u8 bytes escaped with a 1u8 as well as a final terminating null

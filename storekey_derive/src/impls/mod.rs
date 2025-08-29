@@ -1,9 +1,8 @@
 use proc_macro2::TokenStream;
 use quote::{ToTokens, format_ident, quote};
-use syn::{
-	DeriveInput, Generics, Result, Token, TypeParamBound, parse2, punctuated::Punctuated,
-	spanned::Spanned,
-};
+use syn::punctuated::Punctuated;
+use syn::spanned::Spanned;
+use syn::{DeriveInput, Generics, Result, Token, TypeParamBound, parse2};
 
 fn build_generics_types(bound: TypeParamBound, generics: &Generics) -> TokenStream {
 	let mut types = Punctuated::<_, Token![,]>::new();

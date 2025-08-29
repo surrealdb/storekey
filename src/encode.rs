@@ -1,8 +1,6 @@
-use std::{
-	borrow::Cow,
-	collections::{BTreeMap, HashMap},
-	io::Write,
-};
+use std::borrow::Cow;
+use std::collections::{BTreeMap, HashMap};
+use std::io::Write;
 
 use super::{Encode, Result, Writer};
 

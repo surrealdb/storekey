@@ -1,9 +1,8 @@
-use std::{borrow::Cow, io::BufRead};
+use std::borrow::Cow;
+use std::io::BufRead;
 
-use super::{
-	types::{EscapedSlice, EscapedStr},
-	Error, Result,
-};
+use super::types::{EscapedSlice, EscapedStr};
+use super::{Error, Result};
 
 pub struct Reader<R> {
 	inner: R,

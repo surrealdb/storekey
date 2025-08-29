@@ -7,17 +7,16 @@ pub use storekey_derive::{BorrowDecode, Decode, Encode, ToEscaped};
 
 mod decode;
 mod encode;
+mod features;
 mod reader;
 mod to_escaped;
 mod types;
 mod writer;
-mod features;
 
 #[cfg(test)]
 mod test;
 
-pub use reader::BorrowReader;
-pub use reader::Reader;
+pub use reader::{BorrowReader, Reader};
 pub use to_escaped::ToEscaped;
 pub use types::{EscapedChars, EscapedIter, EscapedSlice, EscapedStr};
 pub use writer::Writer;
