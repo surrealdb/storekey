@@ -31,7 +31,7 @@ impl<K: Decode + Hash + Eq, V: Decode, S: BuildHasher + Default> Decode for Hash
 	fn decode<R: BufRead>(r: &mut Reader<R>) -> Result<Self> {
 		let mut res = HashMap::default();
 
-		while !dbg!(r.read_terminal()?) {
+		while !r.read_terminal()? {
 			let k = K::decode(r)?;
 			let v = V::decode(r)?;
 			res.insert(k, v);

@@ -36,7 +36,7 @@ impl<R: BufRead> Reader<R> {
 	#[inline]
 	pub fn read_terminal(&mut self) -> Result<bool> {
 		self.expect_escaped = true;
-		let buf = dbg!(self.inner.fill_buf())?;
+		let buf = self.inner.fill_buf()?;
 		match buf.get(0) {
 			Some(0) => {
 				self.inner.consume(1);
