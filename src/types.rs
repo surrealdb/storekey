@@ -2,8 +2,10 @@ use std::fmt::{self};
 use std::io::Write;
 use std::{slice, str};
 
+use crate::{DecodeError, EncodeError};
+
 use super::reader::BorrowReader;
-use super::{BorrowDecode, Encode, Result, Writer};
+use super::{BorrowDecode, Encode, Writer};
 
 /// A slice buffer which is in an escaped format:
 /// containing possible 0u8 and 1u8 bytes escaped with a 1u8 as well as a final terminating null
@@ -26,19 +28,19 @@ impl EscapedSlice {
 		&self.0
 	}
 
-	pub fn iter(&self) -> EscapedIter {
+	pub fn iter(&self) -> EscapedIter<'_> {
 		EscapedIter(self.0[..self.0.len() - 1].iter())
 	}
 }
 
 impl Encode for &EscapedSlice {
-	fn encode<W: Write>(&self, w: &mut Writer<W>) -> Result<()> {
-		w.write_escaped_slice(*self)
+	fn encode<W: Write>(&self, w: &mut Writer<W>) -> Result<(), EncodeError> {
+		w.write_escaped_slice(self)
 	}
 }
 
 impl<'de> BorrowDecode<'de> for &'de EscapedSlice {
-	fn borrow_decode(w: &mut BorrowReader<'de>) -> Result<Self> {
+	fn borrow_decode(w: &mut BorrowReader<'de>) -> Result<Self, DecodeError> {
 		w.read_escaped_slice()
 	}
 }
@@ -50,13 +52,11 @@ impl fmt::Debug for EscapedSlice {
 			if escaped {
 				escaped = false;
 				true
+			} else if *x == 1 {
+				escaped = true;
+				false
 			} else {
-				if *x == 1 {
-					escaped = true;
-					false
-				} else {
-					true
-				}
+				true
 			}
 		});
 
@@ -141,19 +141,19 @@ impl EscapedStr {
 		unsafe { EscapedSlice::from_slice(self.0.as_bytes()) }
 	}
 
-	pub fn chars(&self) -> EscapedChars {
+	pub fn chars(&self) -> EscapedChars<'_> {
 		EscapedChars(self.0[..self.0.len() - 1].chars())
 	}
 }
 
 impl Encode for &EscapedStr {
-	fn encode<W: Write>(&self, w: &mut Writer<W>) -> Result<()> {
+	fn encode<W: Write>(&self, w: &mut Writer<W>) -> Result<(), EncodeError> {
 		w.write_escaped_slice(self.as_slice())
 	}
 }
 
 impl<'de> BorrowDecode<'de> for &'de EscapedStr {
-	fn borrow_decode(w: &mut BorrowReader<'de>) -> Result<Self> {
+	fn borrow_decode(w: &mut BorrowReader<'de>) -> Result<Self, DecodeError> {
 		w.read_escaped_str()
 	}
 }

@@ -1,11 +1,11 @@
-use std::fmt::Debug;
+use std::{borrow::Cow, fmt::Debug};
 
 use storekey::{
 	decode, decode_borrow, encode_vec, BorrowDecode, Decode, Encode, EscapedStr, ToEscaped,
 };
 
 fn roundtrip<T: Encode + Decode + for<'a> BorrowDecode<'a> + Debug + PartialEq>(a: T) {
-	let enc = encode_vec(&a);
+	let enc = encode_vec(&a).unwrap();
 	let dec = decode(enc.as_slice()).unwrap();
 	assert_eq!(a, dec);
 	let dec = decode_borrow(enc.as_slice()).unwrap();
@@ -24,8 +24,9 @@ struct Test {
 fn basic_struct() {
 	roundtrip(Test {
 		a: 3828,
-		b: 0192,
-		c: 19293.2312,
+		b: 192,
+		#[allow(clippy::excessive_precision)]
+		c: 19_293.231_2,
 		d: "Test string\x00".to_string(),
 	});
 }
@@ -86,12 +87,13 @@ struct TestBorrowed<'de> {
 fn lifetime_struct() {
 	let before = Test {
 		a: 3828,
-		b: 0192,
+		b: 192,
+		#[allow(clippy::excessive_precision)]
 		c: 19293.2312,
 		d: "Test string\x00".to_string(),
 	};
 
-	let enc = encode_vec(&before);
+	let enc = encode_vec(&before).unwrap();
 	let dec: TestBorrowed = decode_borrow(&enc).unwrap();
 	assert_eq!(before.a, dec.a);
 	assert_eq!(before.b, dec.b);
@@ -111,12 +113,47 @@ fn escaped() {
 		slice: &[0, 1],
 		str: "\x00\x01",
 	};
-	let encode = encode_vec(&before);
+	let encode = encode_vec(&before).unwrap();
 	let after: TestEscapedEscaped = decode_borrow(encode.as_slice()).unwrap();
 	assert_eq!(before.slice, after.slice);
 	assert_eq!(before.str, after.str);
-	let encode_after = encode_vec(&after);
+	let encode_after = encode_vec(&after).unwrap();
 	assert_eq!(encode, encode_after);
+}
+
+#[derive(Encode, BorrowDecode, PartialEq, Debug)]
+struct TestCow<'a> {
+	slice: Cow<'a, [u8]>,
+	str: Cow<'a, str>,
+}
+
+#[test]
+fn cow() {
+	let before = TestEscaped {
+		slice: &[0, 1],
+		str: "\x00\x01",
+	};
+	let encode = encode_vec(&before).unwrap();
+	let after: TestCow = decode_borrow(encode.as_slice()).unwrap();
+
+	assert_eq!(before.slice, after.slice.as_ref());
+	assert_eq!(before.str, after.str.as_ref());
+
+	assert!(matches!(after.slice, Cow::Owned(_)));
+	assert!(matches!(after.str, Cow::Owned(_)));
+
+	let before = TestEscaped {
+		slice: &[2, 3],
+		str: "hello there",
+	};
+	let encode = encode_vec(&before).unwrap();
+	let after: TestCow = decode_borrow(encode.as_slice()).unwrap();
+
+	assert_eq!(before.slice, after.slice.as_ref());
+	assert_eq!(before.str, after.str.as_ref());
+
+	assert!(matches!(after.slice, Cow::Borrowed(_)));
+	assert!(matches!(after.str, Cow::Borrowed(_)));
 }
 
 #[derive(Encode, Decode, BorrowDecode, PartialEq, Debug)]

@@ -47,7 +47,9 @@ pub fn encode(input: TokenStream) -> Result<TokenStream> {
 
 			for (idx, v) in data_enum.variants.iter().enumerate() {
 				let name = &v.ident;
-				let idx = idx as u32;
+				let idx = idx
+					.checked_add(2)
+					.ok_or(syn::Error::new_spanned(v, "Too many enum variants"))? as u32;
 				match &v.fields {
 					syn::Fields::Named(_) => {
 						let members = v.fields.members();
@@ -112,7 +114,7 @@ pub fn encode(input: TokenStream) -> Result<TokenStream> {
 
 	Ok(quote! {
 		impl <#(#lifetimes,)* #type_bounds #(#consts,)* > ::storekey::Encode for #name  #ty_generics #where_clause {
-			fn encode<W: ::std::io::Write>(&self, _w: &mut ::storekey::Writer<W>) -> ::storekey::Result<()>{
+			fn encode<W: ::std::io::Write>(&self, _w: &mut ::storekey::Writer<W>) -> ::std::result::Result<(), ::storekey::EncodeError>{
 				#inner
 				Ok(())
 			}
@@ -146,7 +148,9 @@ pub fn decode(input: TokenStream) -> Result<TokenStream> {
 
 			for (idx, v) in data_enum.variants.iter().enumerate() {
 				let name = &v.ident;
-				let idx = idx as u32;
+				let idx = idx
+					.checked_add(2)
+					.ok_or(syn::Error::new_spanned(v, "Too many enum variants"))? as u32;
 				let bind_fields = match &v.fields {
 					syn::Fields::Named(_) => {
 						let members = v.fields.members();
@@ -184,7 +188,7 @@ pub fn decode(input: TokenStream) -> Result<TokenStream> {
 				let variant: u32 = ::storekey::Decode::decode(_r)?;
 				match variant {
 					#(#variants,)*
-					_ => Err(::storekey::Error::UnexpectedDiscriminant)
+					_ => Err(::storekey::DecodeError::InvalidFormat)
 				}
 			}
 		}
@@ -204,7 +208,7 @@ pub fn decode(input: TokenStream) -> Result<TokenStream> {
 
 	Ok(quote! {
 		impl <#(#lifetimes,)* #type_bounds #(#consts,)* > ::storekey::Decode for #name #ty_generics #where_clause {
-			fn decode<R: ::std::io::BufRead>(_r: &mut ::storekey::Reader<R>) -> ::storekey::Result<Self>{
+			fn decode<R: ::std::io::BufRead>(_r: &mut ::storekey::Reader<R>) -> ::std::result::Result<Self, ::storekey::DecodeError>{
 				#inner
 			}
 		}
@@ -251,7 +255,9 @@ pub fn borrow_decode(input: TokenStream) -> Result<TokenStream> {
 
 			for (idx, v) in data_enum.variants.iter().enumerate() {
 				let name = &v.ident;
-				let idx = idx as u32;
+				let idx = idx
+					.checked_add(2)
+					.ok_or(syn::Error::new_spanned(v, "Too many enum variants"))? as u32;
 				let bind_fields = match &v.fields {
 					syn::Fields::Named(_) => {
 						let members = v.fields.members();
@@ -289,7 +295,7 @@ pub fn borrow_decode(input: TokenStream) -> Result<TokenStream> {
 				let variant: u32 = ::storekey::BorrowDecode::borrow_decode(_r)?;
 				match variant {
 					#(#variants,)*
-					_ => Err(::storekey::Error::UnexpectedDiscriminant)
+					_ => Err(::storekey::DecodeError::InvalidFormat)
 				}
 			}
 		}
@@ -310,7 +316,7 @@ pub fn borrow_decode(input: TokenStream) -> Result<TokenStream> {
 
 	Ok(quote! {
 		impl <#lifetime, #type_bounds #(#consts,)* > ::storekey::BorrowDecode<#lifetime> for #name #ty_generics #where_clause {
-			fn borrow_decode(_r: &mut ::storekey::BorrowReader<#lifetime>) -> ::storekey::Result<Self>{
+			fn borrow_decode(_r: &mut ::storekey::BorrowReader<#lifetime>) -> ::std::result::Result<Self, ::storekey::DecodeError>{
 				#inner
 			}
 		}
@@ -389,7 +395,7 @@ pub fn to_escaped(input: TokenStream) -> Result<TokenStream> {
 				}
 			}
 			syn::Fields::Unit => quote! {
-				struct #new_name<#type_bounds #(#consts,)*>;
+				struct #new_name < #type_bounds #(#consts,)* >;
 			},
 		},
 		syn::Data::Enum(data_enum) => {
@@ -455,7 +461,7 @@ pub fn to_escaped(input: TokenStream) -> Result<TokenStream> {
 		#ty
 
 		impl<#(#lifetimes,)* #type_bounds #(#consts,)* > ::storekey::ToEscaped for #name #ty_generics #where_clause {
-			type Escaped<#new_lifetime> = #new_name<#new_lifetime, #(#type_params,)* #(#consts_params,)*>;
+			type Escaped<#new_lifetime> = #new_name < #new_lifetime, #(#type_params,)* #(#consts_params,)* >;
 
 		}
 	})

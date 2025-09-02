@@ -2,7 +2,7 @@ use std::borrow::Cow;
 use std::io::BufRead;
 
 use super::types::{EscapedSlice, EscapedStr};
-use super::{Error, Result};
+use super::DecodeError;
 
 pub struct Reader<R> {
 	inner: R,
@@ -10,9 +10,15 @@ pub struct Reader<R> {
 }
 
 macro_rules! impl_prims {
+	(signed $ty:ident, $name:ident) => {
+		#[inline]
+		pub fn $name(&mut self) -> Result<$ty, DecodeError> {
+			Ok($ty::from_be_bytes(self.read_array()?) ^ $ty::MIN)
+		}
+	};
 	($ty:ident, $name:ident) => {
 		#[inline]
-		pub fn $name(&mut self) -> Result<$ty> {
+		pub fn $name(&mut self) -> Result<$ty, DecodeError> {
 			Ok($ty::from_be_bytes(self.read_array()?))
 		}
 	};
@@ -28,26 +34,26 @@ impl<R: BufRead> Reader<R> {
 
 	/// Returns if the reader is empty / contains no more data.
 	#[inline]
-	pub fn is_empty(&mut self) -> Result<bool> {
+	pub fn is_empty(&mut self) -> Result<bool, DecodeError> {
 		Ok(self.inner.fill_buf()?.is_empty())
 	}
 
 	#[inline]
-	pub fn read_terminal(&mut self) -> Result<bool> {
+	pub fn read_terminal(&mut self) -> Result<bool, DecodeError> {
 		self.expect_escaped = true;
 		let buf = self.inner.fill_buf()?;
-		match buf.get(0) {
+		match buf.first() {
 			Some(0) => {
 				self.inner.consume(1);
 				Ok(true)
 			}
 			Some(_) => Ok(false),
-			None => Err(Error::UnexpectedEnd),
+			None => Err(DecodeError::UnexpectedEnd),
 		}
 	}
 
 	#[inline]
-	pub fn read_array<const SIZE: usize>(&mut self) -> Result<[u8; SIZE]> {
+	pub fn read_array<const SIZE: usize>(&mut self) -> Result<[u8; SIZE], DecodeError> {
 		if self.expect_escaped {
 			self.expect_escaped = false;
 			let mut buffer = [0];
@@ -66,14 +72,14 @@ impl<R: BufRead> Reader<R> {
 	}
 
 	#[inline]
-	pub fn read_vec(&mut self) -> Result<Vec<u8>> {
+	pub fn read_vec(&mut self) -> Result<Vec<u8>, DecodeError> {
 		self.expect_escaped = false;
 		let mut buffer = Vec::new();
 
-		let mut read_u8 = || -> Result<u8> {
+		let mut read_u8 = || -> Result<u8, DecodeError> {
 			let mut buffer = [0u8];
 			if self.inner.read(&mut buffer)? == 0 {
-				return Err(Error::UnexpectedEnd);
+				return Err(DecodeError::UnexpectedEnd);
 			};
 			Ok(buffer[0])
 		};
@@ -94,34 +100,34 @@ impl<R: BufRead> Reader<R> {
 	}
 
 	#[inline]
-	pub fn read_string(&mut self) -> Result<String> {
+	pub fn read_string(&mut self) -> Result<String, DecodeError> {
 		let buf = self.read_vec()?;
-		String::from_utf8(buf).map_err(|_| Error::Utf8)
+		String::from_utf8(buf).map_err(|_| DecodeError::Utf8)
 	}
 
 	#[inline]
-	pub fn read_f32(&mut self) -> Result<f32> {
-		let v = self.read_i32()?;
+	pub fn read_f32(&mut self) -> Result<f32, DecodeError> {
+		let v = self.read_u32()? as i32;
 		let t = ((v ^ i32::MIN) >> 31) | i32::MIN;
 		Ok(f32::from_bits((v ^ t) as u32))
 	}
 
 	#[inline]
-	pub fn read_f64(&mut self) -> Result<f64> {
-		let v = self.read_i64()?;
+	pub fn read_f64(&mut self) -> Result<f64, DecodeError> {
+		let v = self.read_u64()? as i64;
 		let t = ((v ^ i64::MIN) >> 63) | i64::MIN;
 		Ok(f64::from_bits((v ^ t) as u64))
 	}
 
-	impl_prims! {i8, read_i8}
+	impl_prims! {signed i8, read_i8}
 	impl_prims! {u8, read_u8}
-	impl_prims! {i16,read_i16}
+	impl_prims! {signed i16,read_i16}
 	impl_prims! {u16,read_u16}
-	impl_prims! {i32,read_i32}
+	impl_prims! {signed i32,read_i32}
 	impl_prims! {u32,read_u32}
-	impl_prims! {i64,read_i64}
+	impl_prims! {signed i64,read_i64}
 	impl_prims! {u64,read_u64}
-	impl_prims! {i128,read_i128}
+	impl_prims! {signed i128,read_i128}
 	impl_prims! {u128,read_u128}
 }
 
@@ -148,10 +154,14 @@ impl<'de> BorrowReader<'de> {
 		self.inner = &self.inner[s..];
 	}
 
+	/// Try to read a terminator byte if there is one.
+	///
+	/// Returns true if the next byte is a terminator, otherwise returns false and the reader does
+	/// not advance.
 	#[inline]
-	pub fn read_terminal(&mut self) -> Result<bool> {
+	pub fn read_terminal(&mut self) -> Result<bool, DecodeError> {
 		self.expect_escaped = true;
-		let term = self.inner.get(0).ok_or(Error::UnexpectedEnd)?;
+		let term = self.inner.first().ok_or(DecodeError::UnexpectedEnd)?;
 		if *term == 0 {
 			self.advance(1);
 			Ok(true)
@@ -161,14 +171,14 @@ impl<'de> BorrowReader<'de> {
 	}
 
 	#[inline]
-	pub fn read_array<const SIZE: usize>(&mut self) -> Result<[u8; SIZE]> {
+	pub fn read_array<const SIZE: usize>(&mut self) -> Result<[u8; SIZE], DecodeError> {
 		if self.expect_escaped {
 			self.expect_escaped = false;
-			if *self.inner.get(0).ok_or(Error::UnexpectedEnd)? == 1 {
+			if *self.inner.first().ok_or(DecodeError::UnexpectedEnd)? == 1 {
 				self.advance(1);
 			}
 		}
-		let slice = self.inner.get(..SIZE).ok_or(Error::UnexpectedEnd)?;
+		let slice = self.inner.get(..SIZE).ok_or(DecodeError::UnexpectedEnd)?;
 		let mut res = [0u8; SIZE];
 		res.copy_from_slice(slice);
 		self.advance(SIZE);
@@ -176,16 +186,16 @@ impl<'de> BorrowReader<'de> {
 	}
 
 	#[inline]
-	fn read_into_vec(&mut self, buffer: &mut Vec<u8>) -> Result<()> {
+	fn read_into_vec(&mut self, buffer: &mut Vec<u8>) -> Result<(), DecodeError> {
 		self.expect_escaped = false;
 		let mut iter = self.inner.iter();
 		loop {
 			let Some(next) = iter.next().copied() else {
-				return Err(Error::UnexpectedEnd);
+				return Err(DecodeError::UnexpectedEnd);
 			};
 			if next == 1 {
 				let Some(next) = iter.next().copied() else {
-					return Err(Error::UnexpectedEnd);
+					return Err(DecodeError::UnexpectedEnd);
 				};
 				buffer.push(next);
 				continue;
@@ -200,7 +210,7 @@ impl<'de> BorrowReader<'de> {
 	}
 
 	#[inline]
-	pub fn read_cow(&mut self) -> Result<Cow<'de, [u8]>> {
+	pub fn read_cow(&mut self) -> Result<Cow<'de, [u8]>, DecodeError> {
 		self.expect_escaped = false;
 		for i in 0.. {
 			match self.inner.get(i) {
@@ -214,20 +224,20 @@ impl<'de> BorrowReader<'de> {
 				Some(1) => {
 					// Hit an escape character so we need to create a buffer.
 					let mut buffer = self.inner[..i].to_vec();
-					buffer.push(*self.inner.get(i + 1).ok_or(Error::UnexpectedEnd)?);
+					buffer.push(*self.inner.get(i + 1).ok_or(DecodeError::UnexpectedEnd)?);
 					self.advance(i + 2);
 					self.read_into_vec(&mut buffer)?;
 					return Ok(Cow::Owned(buffer));
 				}
 				Some(_) => {}
-				None => return Err(Error::UnexpectedEnd),
+				None => return Err(DecodeError::UnexpectedEnd),
 			}
 		}
 		unreachable!()
 	}
 
 	#[inline]
-	pub fn read_vec(&mut self) -> Result<Vec<u8>> {
+	pub fn read_vec(&mut self) -> Result<Vec<u8>, DecodeError> {
 		self.expect_escaped = false;
 		let mut buffer = Vec::new();
 		self.read_into_vec(&mut buffer)?;
@@ -235,21 +245,23 @@ impl<'de> BorrowReader<'de> {
 	}
 
 	#[inline]
-	pub fn read_str_cow(&mut self) -> Result<Cow<'de, str>> {
+	pub fn read_str_cow(&mut self) -> Result<Cow<'de, str>, DecodeError> {
 		match self.read_cow()? {
-			Cow::Borrowed(x) => Ok(Cow::Borrowed(str::from_utf8(x).map_err(|_| Error::Utf8)?)),
-			Cow::Owned(x) => Ok(Cow::Owned(String::from_utf8(x).map_err(|_| Error::Utf8)?)),
+			Cow::Borrowed(x) => {
+				Ok(Cow::Borrowed(str::from_utf8(x).map_err(|_| DecodeError::Utf8)?))
+			}
+			Cow::Owned(x) => Ok(Cow::Owned(String::from_utf8(x).map_err(|_| DecodeError::Utf8)?)),
 		}
 	}
 
 	#[inline]
-	pub fn read_string(&mut self) -> Result<String> {
+	pub fn read_string(&mut self) -> Result<String, DecodeError> {
 		let buffer = self.read_vec()?;
-		String::from_utf8(buffer).map_err(|_| Error::Utf8)
+		String::from_utf8(buffer).map_err(|_| DecodeError::Utf8)
 	}
 
 	#[inline]
-	pub fn read_escaped_slice(&mut self) -> Result<&'de EscapedSlice> {
+	pub fn read_escaped_slice(&mut self) -> Result<&'de EscapedSlice, DecodeError> {
 		self.expect_escaped = false;
 		let mut i = 0;
 		loop {
@@ -265,40 +277,40 @@ impl<'de> BorrowReader<'de> {
 				Some(_) => {
 					i += 1;
 				}
-				None => return Err(Error::UnexpectedEnd),
+				None => return Err(DecodeError::UnexpectedEnd),
 			}
 		}
 	}
 
 	#[inline]
-	pub fn read_escaped_str(&mut self) -> Result<&'de EscapedStr> {
+	pub fn read_escaped_str(&mut self) -> Result<&'de EscapedStr, DecodeError> {
 		let str = str::from_utf8(self.read_escaped_slice()?.as_bytes())
-			.map_err(|_| Error::UnexpectedEnd)?;
+			.map_err(|_| DecodeError::UnexpectedEnd)?;
 		Ok(unsafe { EscapedStr::from_str(str) })
 	}
 
 	#[inline]
-	pub fn read_f32(&mut self) -> Result<f32> {
-		let v = self.read_i32()?;
+	pub fn read_f32(&mut self) -> Result<f32, DecodeError> {
+		let v = self.read_u32()? as i32;
 		let t = ((v ^ i32::MIN) >> 31) | i32::MIN;
 		Ok(f32::from_bits((v ^ t) as u32))
 	}
 
 	#[inline]
-	pub fn read_f64(&mut self) -> Result<f64> {
-		let v = self.read_i64()?;
+	pub fn read_f64(&mut self) -> Result<f64, DecodeError> {
+		let v = self.read_u64()? as i64;
 		let t = ((v ^ i64::MIN) >> 63) | i64::MIN;
 		Ok(f64::from_bits((v ^ t) as u64))
 	}
 
-	impl_prims! {i8, read_i8}
+	impl_prims! {signed i8, read_i8}
 	impl_prims! {u8, read_u8}
-	impl_prims! {i16,read_i16}
+	impl_prims! {signed i16,read_i16}
 	impl_prims! {u16,read_u16}
-	impl_prims! {i32,read_i32}
+	impl_prims! {signed i32,read_i32}
 	impl_prims! {u32,read_u32}
-	impl_prims! {i64,read_i64}
+	impl_prims! {signed i64,read_i64}
 	impl_prims! {u64,read_u64}
-	impl_prims! {i128,read_i128}
+	impl_prims! {signed i128,read_i128}
 	impl_prims! {u128,read_u128}
 }

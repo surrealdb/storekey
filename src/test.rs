@@ -10,19 +10,19 @@ macro_rules! test_primitives {
 		#[test]
 		fn $name() {
 			let v: $t = 0;
-			let enc = encode_vec(&v);
+			let enc = encode_vec(&v).unwrap();
 			let dec: $t = decode(enc.as_slice()).unwrap();
 			assert_eq!(v, dec, concat!("Conversion for ", stringify!($t), " failed"));
 			let dec: $t = decode_borrow(enc.as_slice()).unwrap();
 			assert_eq!(v, dec, concat!("Conversion for ", stringify!($t), " failed"));
 			let v: $t = $t::MIN;
-			let enc = encode_vec(&v);
+			let enc = encode_vec(&v).unwrap();
 			let dec: $t = decode(enc.as_slice()).unwrap();
 			assert_eq!(v, dec, concat!("Conversion for ", stringify!($t), " failed"));
 			let dec: $t = decode_borrow(enc.as_slice()).unwrap();
 			assert_eq!(v, dec, concat!("Conversion for ", stringify!($t), " failed"));
 			let v: $t = $t::MAX;
-			let enc = encode_vec(&v);
+			let enc = encode_vec(&v).unwrap();
 			let dec: $t = decode(enc.as_slice()).unwrap();
 			assert_eq!(v, dec, concat!("Conversion for ", stringify!($t), " failed"));
 			let dec: $t = decode_borrow(enc.as_slice()).unwrap();
@@ -45,19 +45,19 @@ test_primitives!(i128, primitive_i128);
 #[test]
 fn primitive_f32() {
 	let v: f32 = 0.0;
-	let enc = encode_vec(&v);
+	let enc = encode_vec(&v).unwrap();
 	let dec: f32 = decode(enc.as_slice()).unwrap();
 	assert_eq!(v, dec, concat!("Conversion for ", stringify!(f32), " failed"));
 	let dec: f32 = decode_borrow(enc.as_slice()).unwrap();
 	assert_eq!(v, dec, concat!("Conversion for ", stringify!(f32), " failed"));
 	let v: f32 = f32::MIN;
-	let enc = encode_vec(&v);
+	let enc = encode_vec(&v).unwrap();
 	let dec: f32 = decode(enc.as_slice()).unwrap();
 	assert_eq!(v, dec, concat!("Conversion for ", stringify!(f32), " failed"));
 	let dec: f32 = decode_borrow(enc.as_slice()).unwrap();
 	assert_eq!(v, dec, concat!("Conversion for ", stringify!(f32), " failed"));
 	let v: f32 = f32::MAX;
-	let enc = encode_vec(&v);
+	let enc = encode_vec(&v).unwrap();
 	let dec: f32 = decode(enc.as_slice()).unwrap();
 	assert_eq!(v, dec, concat!("Conversion for ", stringify!(f32), " failed"));
 	let dec: f32 = decode_borrow(enc.as_slice()).unwrap();
@@ -67,19 +67,19 @@ fn primitive_f32() {
 #[test]
 fn primitive_f64() {
 	let v: f64 = 0.0;
-	let enc = encode_vec(&v);
+	let enc = encode_vec(&v).unwrap();
 	let dec: f64 = decode(enc.as_slice()).unwrap();
 	assert_eq!(v, dec, concat!("Conversion for ", stringify!(f64), " failed"));
 	let dec: f64 = decode_borrow(enc.as_slice()).unwrap();
 	assert_eq!(v, dec, concat!("Conversion for ", stringify!(f64), " failed"));
 	let v: f64 = f64::MIN;
-	let enc = encode_vec(&v);
+	let enc = encode_vec(&v).unwrap();
 	let dec: f64 = decode(enc.as_slice()).unwrap();
 	assert_eq!(v, dec, concat!("Conversion for ", stringify!(f64), " failed"));
 	let dec: f64 = decode_borrow(enc.as_slice()).unwrap();
 	assert_eq!(v, dec, concat!("Conversion for ", stringify!(f64), " failed"));
 	let v: f64 = f64::MAX;
-	let enc = encode_vec(&v);
+	let enc = encode_vec(&v).unwrap();
 	let dec: f64 = decode(enc.as_slice()).unwrap();
 	assert_eq!(v, dec, concat!("Conversion for ", stringify!(f64), " failed"));
 	let dec: f64 = decode_borrow(enc.as_slice()).unwrap();
@@ -89,7 +89,7 @@ fn primitive_f64() {
 #[test]
 fn vec() {
 	fn test_vec<T: Decode + Encode + for<'a> BorrowDecode<'a> + Debug + PartialEq>(vec: Vec<T>) {
-		let enc = dbg!(encode_vec(&vec));
+		let enc = dbg!(encode_vec(&vec).unwrap());
 		let dec: Vec<T> = decode(enc.as_slice()).unwrap();
 		assert_eq!(vec, dec);
 		let dec: Vec<T> = decode_borrow(enc.as_slice()).unwrap();
@@ -113,17 +113,17 @@ fn hashmap() {
 	{
 		let map: HashMap<K, V> = map.into_iter().collect();
 
-		let enc = dbg!(encode_vec(&map));
+		let enc = dbg!(encode_vec(&map).unwrap());
 		let dec: HashMap<K, V> = decode(enc.as_slice()).unwrap();
 		assert_eq!(map.len(), dec.len());
 		for (k, v) in map.iter() {
-			assert_eq!(dec.get(&k).unwrap(), v, "Value for key {:?} was not correct", k);
+			assert_eq!(dec.get(k).unwrap(), v, "Value for key {:?} was not correct", k);
 		}
 
 		let dec: HashMap<K, V> = decode_borrow(enc.as_slice()).unwrap();
 		assert_eq!(map.len(), dec.len());
 		for (k, v) in map.iter() {
-			assert_eq!(dec.get(&k).unwrap(), v, "Value for key {:?} was not correct", k);
+			assert_eq!(dec.get(k).unwrap(), v, "Value for key {:?} was not correct", k);
 		}
 	}
 
@@ -149,17 +149,17 @@ fn btree() {
 	{
 		let map: BTreeMap<K, V> = map.into_iter().collect();
 
-		let enc = dbg!(encode_vec(&map));
+		let enc = dbg!(encode_vec(&map).unwrap());
 		let dec: BTreeMap<K, V> = decode(enc.as_slice()).unwrap();
 		assert_eq!(map.len(), dec.len());
 		for (k, v) in map.iter() {
-			assert_eq!(dec.get(&k).unwrap(), v, "Value for key {:?} was not correct", k);
+			assert_eq!(dec.get(k).unwrap(), v, "Value for key {:?} was not correct", k);
 		}
 
 		let dec: BTreeMap<K, V> = decode_borrow(enc.as_slice()).unwrap();
 		assert_eq!(map.len(), dec.len());
 		for (k, v) in map.iter() {
-			assert_eq!(dec.get(&k).unwrap(), v, "Value for key {:?} was not correct", k);
+			assert_eq!(dec.get(k).unwrap(), v, "Value for key {:?} was not correct", k);
 		}
 	}
 
@@ -178,10 +178,18 @@ fn btree() {
 
 #[test]
 fn ordering() {
-	fn test_order<O: PartialOrd + Encode>(a: O, b: O) {
-		let a_enc = encode_vec(&a);
-		let b_enc = encode_vec(&b);
-		assert_eq!(a.partial_cmp(&b), a_enc.partial_cmp(&b_enc))
+	fn test_order<O: PartialOrd + Encode + Debug>(a: O, b: O) {
+		let a_enc = encode_vec(&a).unwrap();
+		let b_enc = encode_vec(&b).unwrap();
+		assert_eq!(
+			a.partial_cmp(&b),
+			a_enc.partial_cmp(&b_enc),
+			"order mismatch for {:?} {:?} => {:?} {:?}",
+			a,
+			b,
+			a_enc,
+			b_enc
+		);
 	}
 
 	fn b<K, V, const S: usize>(map: [(K, V); S]) -> BTreeMap<K, V>
@@ -195,7 +203,12 @@ fn ordering() {
 	test_order(0u8, 1);
 	test_order(0u8, 255);
 
+	test_order(-1i32, 1);
+	test_order(i32::MIN, i32::MAX);
+
 	test_order(0.0, 1.0);
+	test_order(-1.0f32, 1.0f32);
+	test_order(-1.0, 1.0);
 	test_order(0.0, 2.0);
 	test_order(f32::INFINITY, f32::MAX);
 	test_order(f32::NEG_INFINITY, f32::MIN);
@@ -227,13 +240,13 @@ fn ordering() {
 #[test]
 fn cow() {
 	let data = "hello";
-	let enc = encode_vec(data);
+	let enc = encode_vec(data).unwrap();
 	let dec: Cow<'_, str> = decode_borrow(enc.as_slice()).unwrap();
 	assert_eq!(data, dec.as_ref());
 	assert!(matches!(dec, Cow::Borrowed(_)));
 
 	let data = "hello\x00";
-	let enc = encode_vec(data);
+	let enc = encode_vec(data).unwrap();
 	let dec: Cow<'_, str> = decode_borrow(enc.as_slice()).unwrap();
 	assert_eq!(data, dec.as_ref());
 	assert!(matches!(dec, Cow::Owned(_)));
