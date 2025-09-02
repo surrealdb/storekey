@@ -230,6 +230,7 @@ fn ordering() {
 	test_order(vec![0], vec![1]);
 	test_order(vec![0, 0], vec![0, 1]);
 	test_order(vec![0], vec![0, 0]);
+	test_order(vec![255u8], vec![255, 255]);
 	test_order(vec![255], vec![0, 1]);
 
 	test_order(b::<u8, u8, 0>([]), b([]));
