@@ -64,12 +64,12 @@ checksum = "b39cdef0fa800fc44525c84ccb54a029961a8215f9619753635a9c0d2538d46d"
 name = "storekey"
 version = "0.6.0"
 dependencies = [
- "storekey_derive",
+ "storekey-derive",
  "uuid",
 ]
 
 [[package]]
-name = "storekey_derive"
+name = "storekey-derive"
 version = "0.6.0"
 dependencies = [
  "proc-macro2",

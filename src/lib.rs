@@ -182,17 +182,17 @@ impl From<io::Error> for DecodeError {
 /// # use std::io::Write;
 ///
 /// struct MyStruct{
-///		field_a: u32,
-///		field_b: String,
+///     field_a: u32,
+///     field_b: String,
 /// }
 ///
 /// impl Encode for MyStruct{
-///		fn encode<W: Write>(&self, w: &mut Writer<W>) -> Result<(), EncodeError>{
-///			self.field_a.encode(w)?;
-///			self.field_b.encode(w)?;
-///			Ok(())
-///		}
-///	}
+///     fn encode<W: Write>(&self, w: &mut Writer<W>) -> Result<(), EncodeError>{
+///         self.field_a.encode(w)?;
+///         self.field_b.encode(w)?;
+///         Ok(())
+///     }
+/// }
 /// ```
 ///
 /// For enums the generall pattern is to first encode the discriminant and then encode the
@@ -203,27 +203,29 @@ impl From<io::Error> for DecodeError {
 /// # use std::io::Write;
 ///
 /// enum MyEnum{
-///		VariantA(u32),
-///		VariantB(String),
+///     VariantA(u32),
+///     VariantB(String),
 /// }
 ///
 /// impl Encode for MyEnum{
-///		fn encode<W: Write>(&self, w: &mut Writer<W>) -> Result<(), EncodeError>{
-///			match self {
-///				MyEnum::VariantA(x) => {
-///					// One good pattern is to avoid using 0 or 1 as a discriminant as these might need
-///					// to be escaped
-///					w.write_u8(2)?;
-///				    x.encode(w)?;
-///				}
-///				MyEnum::VariantB(x) => {
-///					w.write_u8(3)?;
-///				    x.encode(w)?;
-///				}
-///			}
-///			Ok(())
-///		}
-///	}
+///     fn encode<W: Write>(&self, w: &mut Writer<W>) -> Result<(), EncodeError>{
+///         match self {
+///             MyEnum::VariantA(x) => {
+///                 // One good pattern is to avoid using 0 or 1 as a discriminant as these might need
+///                 // to be escaped
+///                 w.write_u8(2)?;
+///                 x.encode(w)?;
+///             }
+///             MyEnum::VariantB(x) => {
+///                 // One good pattern is to avoid using 0 or 1 as a discriminant as these might need
+///                 // to be escaped
+///                 w.write_u8(3)?;
+///                 x.encode(w)?;
+///             }
+///         }
+///         Ok(())
+///     }
+/// }
 /// ```
 ///
 /// Finally for runtime sized types it you need to mark locations where the decoder might expect a
@@ -239,19 +241,19 @@ impl From<io::Error> for DecodeError {
 /// struct MyVec(Vec<u8>);
 ///
 /// impl Encode for MyVec{
-///		fn encode<W: Write>(&self, w: &mut Writer<W>) -> Result<(), EncodeError>{
-///			for v in self.0.iter(){
-///				// Before every entry in the vector it is possible that a terminator might happen
-///				// as the vec could have been shorter. So we need to mark these spots so that the
-///				// writer knows to escape the null byte.
-///				w.mark_terminator();
-///				v.encode(w)?;
-///			}
-///			// We have finished the list so we need to mark the end.
-///			w.write_terminator()?;
-///			Ok(())
-///		}
-///	}
+///     fn encode<W: Write>(&self, w: &mut Writer<W>) -> Result<(), EncodeError>{
+///         for v in self.0.iter(){
+///             // Before every entry in the vector it is possible that a terminator might happen
+///             // as the vec could have been shorter. So we need to mark these spots so that the
+///             // writer knows to escape the null byte.
+///             w.mark_terminator();
+///             v.encode(w)?;
+///         }
+///         // We have finished the list so we need to mark the end.
+///         w.write_terminator()?;
+///         Ok(())
+///     }
+/// }
 /// ```
 ///
 pub trait Encode {
@@ -272,37 +274,37 @@ pub trait Encode {
 /// use std::io::BufRead;
 ///
 /// struct MyStruct{
-///		field_a: u32,
-///		field_b: String,
+///     field_a: u32,
+///     field_b: String,
 /// }
 ///
 /// impl Decode for MyStruct{
-///		fn decode<R: BufRead>(r: &mut Reader<R>) -> Result<Self, DecodeError>{
-///			let field_a = Decode::decode(r)?;
-///			let field_b = Decode::decode(r)?;
-///			Ok(MyStruct{
-///				field_a,
-///				field_b
-///			})
-///		}
-///	}
+///     fn decode<R: BufRead>(r: &mut Reader<R>) -> Result<Self, DecodeError>{
+///         let field_a = Decode::decode(r)?;
+///         let field_b = Decode::decode(r)?;
+///         Ok(MyStruct{
+///             field_a,
+///             field_b
+///         })
+///     }
+/// }
 ///
 /// enum MyEnum{
-///		VariantA(u32),
-///		VariantB(String),
+///     VariantA(u32),
+///     VariantB(String),
 /// }
 ///
 /// impl Decode for MyEnum{
-///		fn decode<R: BufRead>(r: &mut Reader<R>) -> Result<Self, DecodeError>{
-///			match r.read_u8()? {
-///				// One good pattern is to avoid using 0 or 1 as a discriminant as these might need
-///				// to be escaped
-///			    2 => Ok(MyEnum::VariantA(Decode::decode(r)?)),
-///			    3 => Ok(MyEnum::VariantB(Decode::decode(r)?)),
-///			    _ => Err(DecodeError::InvalidFormat)
-///			}
-///		}
-///	}
+///     fn decode<R: BufRead>(r: &mut Reader<R>) -> Result<Self, DecodeError>{
+///         match r.read_u8()? {
+///             // One good pattern is to avoid using 0 or 1 as a discriminant as these might need
+///             // to be escaped
+///             2 => Ok(MyEnum::VariantA(Decode::decode(r)?)),
+///             3 => Ok(MyEnum::VariantB(Decode::decode(r)?)),
+///             _ => Err(DecodeError::InvalidFormat)
+///         }
+///     }
+/// }
 /// ```
 ///
 /// For runtime size typed it is often best to read values in a while loop using the
@@ -315,14 +317,14 @@ pub trait Encode {
 /// struct MyVec(Vec<u8>);
 ///
 /// impl Decode for MyVec{
-///		fn decode<R: BufRead>(r: &mut Reader<R>) -> Result<Self, DecodeError>{
-///			let mut res = Vec::new();
-///			while r.read_terminal()? {
-///				res.push(Decode::decode(r)?);
-///			}
-///			Ok(MyVec(res))
-///		}
-///	}
+///     fn decode<R: BufRead>(r: &mut Reader<R>) -> Result<Self, DecodeError>{
+///         let mut res = Vec::new();
+///         while r.read_terminal()? {
+///             res.push(Decode::decode(r)?);
+///         }
+///         Ok(MyVec(res))
+///     }
+/// }
 /// ```
 pub trait Decode: Sized {
 	fn decode<R: BufRead>(r: &mut Reader<R>) -> Result<Self, DecodeError>;

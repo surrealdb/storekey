@@ -1,0 +1,19 @@
+[package]
+name = "storekey-derive"
+publish = true
+edition = "2024"
+version = "0.6.0"
+description = "Private implementation of procedural macros for storekey"
+repository = "https://github.com/surrealdb/storekey"
+homepage = "https://github.com/surrealdb/storekey"
+keywords = ["database", "encoding", "key-value", "kv-store", "serialization"]
+categories = ["encoding"]
+license = "Apache-2.0"
+
+[lib]
+proc-macro = true
+
+[dependencies]
+syn = { version = "2" }
+quote = { version = "1" }
+proc-macro2 = "1"

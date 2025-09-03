@@ -1,6 +1,3 @@
-[workspace]
-members = ["./", "storekey_derive"]
-
 [package]
 name = "storekey"
 publish = true
@@ -18,13 +15,14 @@ keywords = ["database", "encoding", "key-value", "kv-store", "serialization"]
 categories = ["encoding"]
 license = "Apache-2.0"
 
+[workspace]
+members = ["./", "storekey-derive"]
+
 [features]
 default = ["derive"]
-
-derive = ["storekey_derive"]
+derive = ["storekey-derive"]
 uuid = ["dep:uuid"]
 
 [dependencies]
-storekey_derive = { version = "0.6.0", path = "storekey_derive", optional = true }
+storekey-derive = { version = "0.6.0", path = "storekey-derive", optional = true }
 uuid = { version = "1.17", optional = true }
-
