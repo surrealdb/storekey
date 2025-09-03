@@ -9,7 +9,7 @@
     </a>
 </p>
 
-<p align="center">Binary encoding for Rust values which ensures lexicographic sort ordering. Order-preserving encoding is useful for creating keys for sorted key-value stores with byte string typed keys, such as <a href="https://github.com/surrealdb/echodb">EchoDB</a>, <a href="https://github.com/surrealdb/yokudb">YokuDB</a>, <a href="https://github.com/surrealdb/indxdb">IndxDB</a>, <a href="https://github.com/tikv/tikv">TiKV</a>, and <a href="https://github.com/surrealdb/surrealdb">SurrealDB</a>.</p>
+<p align="center">Binary encoding for Rust values which ensures lexicographic sort ordering. Order-preserving encoding is useful for creating keys for sorted key-value stores with byte string typed keys, such as <a href="https://github.com/surrealdb/echodb">EchoDB</a>, <a href="https://github.com/surrealdb/memodb">MemoDB</a>, <a href="https://github.com/surrealdb/indxdb">IndxDB</a>, <a href="https://github.com/surrealdb/surrealkv">SurrealKV</a>, and <a href="https://github.com/surrealdb/surrealdb">SurrealDB</a>.</p>
 
 <br>
 
