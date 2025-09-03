@@ -23,11 +23,13 @@ impl EscapedSlice {
 		unsafe { std::mem::transmute(b) }
 	}
 
-	/// Returns the underlying escaped bytes.
+	/// Returns the raw underlying byte representation of the escaped string, including escaped
+	/// bytes.
 	pub fn as_bytes(&self) -> &[u8] {
 		&self.0
 	}
 
+	/// Returns an iterator over the bytes in this slice, unescaping escaped bytes.
 	pub fn iter(&self) -> EscapedIter<'_> {
 		EscapedIter(self.0[..self.0.len() - 1].iter())
 	}
@@ -133,6 +135,8 @@ impl EscapedStr {
 		unsafe { std::mem::transmute(b) }
 	}
 
+	/// Returns the raw underlying byte representation of the escaped string, including escaped
+	/// bytes.
 	pub fn as_bytes(&self) -> &[u8] {
 		self.0.as_bytes()
 	}
@@ -141,6 +145,7 @@ impl EscapedStr {
 		unsafe { EscapedSlice::from_slice(self.0.as_bytes()) }
 	}
 
+	/// Returns a iterator over the characters in this string, unescaping escaped characters.
 	pub fn chars(&self) -> EscapedChars<'_> {
 		EscapedChars(self.0[..self.0.len() - 1].chars())
 	}

@@ -4,6 +4,11 @@ use std::io::BufRead;
 use super::types::{EscapedSlice, EscapedStr};
 use super::DecodeError;
 
+/// Struct used in [`storekey::Decode`] for reading types from the buffer.
+///
+/// This type handles unescaping bytes the buffer mostly transparently.
+/// It has an internal flag for marking when an escaped byte can be read from the buffer.
+/// Reading from the buffer in any way unmarks this flag.
 pub struct Reader<R> {
 	inner: R,
 	expect_escaped: bool,
@@ -25,6 +30,7 @@ macro_rules! impl_prims {
 }
 
 impl<R: BufRead> Reader<R> {
+	/// Create a new reader.
 	pub const fn new(r: R) -> Self {
 		Reader {
 			inner: r,
@@ -38,6 +44,18 @@ impl<R: BufRead> Reader<R> {
 		Ok(self.inner.fill_buf()?.is_empty())
 	}
 
+	/// Mark the next byte as possibly containing an escaped bytes.
+	#[inline]
+	pub fn expect_escaped(&mut self) {
+		self.expect_escaped = true;
+	}
+
+	/// Try to read a terminator byte if there is one.
+	///
+	/// Returns true if the next byte is a terminator, otherwise returns false and the reader does
+	/// not advance.
+	///
+	/// Calling this function marks the next byte as being possible escaped.
 	#[inline]
 	pub fn read_terminal(&mut self) -> Result<bool, DecodeError> {
 		self.expect_escaped = true;
@@ -52,8 +70,18 @@ impl<R: BufRead> Reader<R> {
 		}
 	}
 
+	/// Reads an fixed size array of u8 from the reader, unescaping possible escaped bytes.
+	///
+	/// All other `read_*` functions of `Reader` which read a fixed size type call this function to
+	/// read a certain amount of bytes from the reader.
+	///
+	///	This type does not expect a null terminator after the end of the array as it is reading a
+	///	fixed size type.
+	///
+	///	Calling this function unsets the expected escape flag before returning.
 	#[inline]
 	pub fn read_array<const SIZE: usize>(&mut self) -> Result<[u8; SIZE], DecodeError> {
+		const { assert!(SIZE > 0, "read_array should at minimum read a single byte") };
 		if self.expect_escaped {
 			self.expect_escaped = false;
 			let mut buffer = [0];
@@ -71,6 +99,10 @@ impl<R: BufRead> Reader<R> {
 		Ok(res)
 	}
 
+	/// Reads a runtime sized `Vec<u8>` from the reader, expected the sequence of bytes to be
+	/// ended by a terminal zero byte.
+	///
+	///	Calling this function unsets the expected escape flag before returning.
 	#[inline]
 	pub fn read_vec(&mut self) -> Result<Vec<u8>, DecodeError> {
 		self.expect_escaped = false;
@@ -99,6 +131,10 @@ impl<R: BufRead> Reader<R> {
 		Ok(buffer)
 	}
 
+	/// Reads a runtime sized `String` from the reader, expected the sequence of bytes to be
+	/// ended by a terminal zero byte.
+	///
+	///	Calling this function unsets the expected escape flag before returning.
 	#[inline]
 	pub fn read_string(&mut self) -> Result<String, DecodeError> {
 		let buf = self.read_vec()?;
@@ -131,12 +167,18 @@ impl<R: BufRead> Reader<R> {
 	impl_prims! {u128,read_u128}
 }
 
+/// Struct used in [`storekey::BorrowDecode`] for reading types from the buffer.
+///
+/// This type handles unescaping bytes the buffer mostly transparently.
+/// It has an internal flag for marking when an escaped byte can be read from the buffer.
+/// Reading from the buffer in any way unmarks this flag.
 pub struct BorrowReader<'de> {
 	inner: &'de [u8],
 	expect_escaped: bool,
 }
 
 impl<'de> BorrowReader<'de> {
+	/// Create a new reader.
 	pub const fn new(slice: &'de [u8]) -> Self {
 		BorrowReader {
 			inner: slice,
@@ -152,6 +194,12 @@ impl<'de> BorrowReader<'de> {
 	#[inline]
 	fn advance(&mut self, s: usize) {
 		self.inner = &self.inner[s..];
+	}
+
+	/// Mark the next byte as possibly containing an escaped bytes.
+	#[inline]
+	pub fn expect_escaped(&mut self) {
+		self.expect_escaped = true;
 	}
 
 	/// Try to read a terminator byte if there is one.
@@ -170,6 +218,15 @@ impl<'de> BorrowReader<'de> {
 		}
 	}
 
+	/// Reads an fixed size array of u8 from the reader, unescaping possible escaped bytes.
+	///
+	/// All other `read_*` functions of `Reader` which read a fixed size type call this function to
+	/// read a certain amount of bytes from the reader.
+	///
+	///	This type does not expect a null terminator after the end of the array as it is reading a
+	///	fixed size type.
+	///
+	///	Calling this function unsets the expected escape flag before returning.
 	#[inline]
 	pub fn read_array<const SIZE: usize>(&mut self) -> Result<[u8; SIZE], DecodeError> {
 		if self.expect_escaped {
@@ -209,6 +266,13 @@ impl<'de> BorrowReader<'de> {
 		Ok(())
 	}
 
+	/// Reads a runtime sized `Cow<[u8]>` from the reader, expected the sequence of bytes to be
+	/// ended by a terminal zero byte.
+	///
+	/// If the string encoded in the buffer does not contain escaped characters this function will
+	/// return a `Cow::Borrowed`.
+	///
+	///	Calling this function unsets the expected escape flag before returning.
 	#[inline]
 	pub fn read_cow(&mut self) -> Result<Cow<'de, [u8]>, DecodeError> {
 		self.expect_escaped = false;
@@ -236,6 +300,10 @@ impl<'de> BorrowReader<'de> {
 		unreachable!()
 	}
 
+	/// Reads a runtime sized `Vec<u8>` from the reader, expected the sequence of bytes to be
+	/// ended by a terminal zero byte.
+	///
+	///	Calling this function unsets the expected escape flag before returning.
 	#[inline]
 	pub fn read_vec(&mut self) -> Result<Vec<u8>, DecodeError> {
 		self.expect_escaped = false;
@@ -244,6 +312,13 @@ impl<'de> BorrowReader<'de> {
 		Ok(buffer)
 	}
 
+	/// Reads a runtime sized `Cow<str>` from the reader, expected the sequence of bytes to be
+	/// ended by a terminal zero byte.
+	///
+	/// If the string encoded in the buffer does not contain escaped characters this function will
+	/// return a `Cow::Borrowed`.
+	///
+	///	Calling this function unsets the expected escape flag before returning.
 	#[inline]
 	pub fn read_str_cow(&mut self) -> Result<Cow<'de, str>, DecodeError> {
 		match self.read_cow()? {
@@ -254,12 +329,22 @@ impl<'de> BorrowReader<'de> {
 		}
 	}
 
+	/// Reads a runtime sized `String` from the reader, expected the sequence of bytes to be
+	/// ended by a terminal zero byte.
+	///
+	///	Calling this function unsets the expected escape flag before returning.
 	#[inline]
 	pub fn read_string(&mut self) -> Result<String, DecodeError> {
 		let buffer = self.read_vec()?;
 		String::from_utf8(buffer).map_err(|_| DecodeError::Utf8)
 	}
 
+	/// Reads an escaped slice from the reader, expecting the sequence of bytes to be ended by a
+	/// terminal zero byte.
+	///
+	/// This function never allocates and always returns a borrowed value.
+	///
+	///	Calling this function unsets the expected escape flag before returning.
 	#[inline]
 	pub fn read_escaped_slice(&mut self) -> Result<&'de EscapedSlice, DecodeError> {
 		self.expect_escaped = false;
@@ -282,6 +367,12 @@ impl<'de> BorrowReader<'de> {
 		}
 	}
 
+	/// Reads an escaped str from the reader, expecting the sequence of bytes to be ended by a
+	/// terminal zero byte.
+	///
+	/// This function never allocates and always returns a borrowed value.
+	///
+	///	Calling this function unsets the expected escape flag before returning.
 	#[inline]
 	pub fn read_escaped_str(&mut self) -> Result<&'de EscapedStr, DecodeError> {
 		let str = str::from_utf8(self.read_escaped_slice()?.as_bytes())

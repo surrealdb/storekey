@@ -3,6 +3,13 @@ use std::io::Write;
 use super::types::EscapedSlice;
 use super::EncodeError;
 
+/// The writer type used in [`storekey::Encode`].
+///
+/// Handles writing into the encoding buffer and escaping bytes if needed.
+///
+/// Will only escape bytes where they might conflict with a terminal zero byte.
+/// To do have this function correctly you need to call [`Writer::mark_terminator`] function where
+/// appropriate.
 #[derive(Debug)]
 pub struct Writer<W: Write> {
 	inner: W,
@@ -47,6 +54,8 @@ impl<W: Write> Writer<W> {
 		Ok(())
 	}
 
+	/// Writes an runtime sized slice, escaping null bytes and ending the slice with a terminal
+	/// zero byte.
 	#[inline]
 	pub fn write_slice(&mut self, slice: &[u8]) -> Result<(), EncodeError> {
 		self.escape_zero = false;
@@ -60,6 +69,12 @@ impl<W: Write> Writer<W> {
 		Ok(())
 	}
 
+	/// Write a fixed size array into the buffer.
+	///
+	/// As it is fixed size it will not write a terminal zero byte after the end.
+	///
+	/// This function will escape the first byte of the array if needed.
+	/// All other `write_*` functions which write fixed sized types call this function.
 	#[inline]
 	pub fn write_array<const LEN: usize>(&mut self, array: [u8; LEN]) -> Result<(), EncodeError> {
 		if LEN == 0 {
