@@ -1,552 +1,399 @@
-use byteorder::{ReadBytesExt, BE};
-use serde;
-use serde::de::{Deserialize, Visitor};
-use std;
-use std::fmt;
-use std::io::{self, BufRead};
-use std::marker::PhantomData;
-use std::str;
-use thiserror::Error;
+use std::borrow::Cow;
+use std::collections::{BTreeMap, HashMap};
+use std::hash::{BuildHasher, Hash};
+use std::io::BufRead;
+use std::mem::MaybeUninit;
+use std::time::Duration;
 
-use self::read::{ReadReader, ReadReference, Reference, SliceReader};
+use crate::DecodeError;
 
-pub mod read;
+use super::reader::BorrowReader;
+use super::{BorrowDecode, Decode, Reader};
 
-/// A decoder for deserializing bytes from an order preserving format to a value.
-#[derive(Debug)]
-pub struct Deserializer<R> {
-	reader: R,
-}
-
-/// Errors that may be occur when deserializing.
-#[derive(Error, Debug)]
-pub enum Error {
-	#[error("storekey is not a self-describing format")]
-	DeserializeAnyUnsupported,
-	#[error("Encountered unexpected EOF when deserializing UTF8")]
-	UnexpectedEof,
-	#[error("Attempted to deserialize invalid UTF8")]
-	InvalidUtf8,
-	#[error("{0}")]
-	Message(String),
-	#[error("{0}")]
-	Io(#[from] io::Error),
-}
-
-impl serde::de::Error for Error {
-	fn custom<T: fmt::Display>(msg: T) -> Self {
-		Error::Message(msg.to_string())
+impl Decode for bool {
+	fn decode<R: BufRead>(r: &mut Reader<R>) -> Result<Self, DecodeError> {
+		match r.read_u8()? {
+			2 => Ok(false),
+			3 => Ok(true),
+			_ => Err(DecodeError::InvalidFormat),
+		}
 	}
 }
 
-/// Shorthand for `Result<T, storekey::de::Error>`.
-pub type Result<T> = std::result::Result<T, Error>;
+impl Decode for char {
+	fn decode<R: BufRead>(r: &mut Reader<R>) -> Result<Self, DecodeError> {
+		let c = r.read_u32()?;
+		char::from_u32(c).ok_or(DecodeError::InvalidFormat)
+	}
+}
 
-/// Deserialize data from the given slice of bytes.
-pub fn deserialize<'de, T>(bytes: &'de [u8]) -> Result<T>
+impl Decode for String {
+	fn decode<R: BufRead>(r: &mut Reader<R>) -> Result<Self, DecodeError> {
+		r.read_string()
+	}
+}
+
+impl<D: Decode> Decode for Option<D> {
+	fn decode<R: BufRead>(r: &mut Reader<R>) -> Result<Self, DecodeError> {
+		match r.read_u8()? {
+			// Don't use 0 or 1 as those need to be escaped.
+			// Todo: Maybe keep it backwards compatible.
+			2 => Ok(None),
+			3 => Ok(Some(Decode::decode(r)?)),
+			_ => Err(DecodeError::InvalidFormat),
+		}
+	}
+}
+
+impl<O: Decode, E: Decode> Decode for Result<O, E> {
+	fn decode<R: BufRead>(r: &mut Reader<R>) -> Result<Self, DecodeError> {
+		match r.read_u8()? {
+			// Don't use 0 or 1 as those need to be escaped.
+			// Todo: Maybe keep it backwards compatible.
+			2 => Ok(Ok(Decode::decode(r)?)),
+			3 => Ok(Err(Decode::decode(r)?)),
+			_ => Err(DecodeError::InvalidFormat),
+		}
+	}
+}
+
+impl<D: Decode> Decode for Vec<D> {
+	fn decode<R: BufRead>(r: &mut Reader<R>) -> Result<Self, DecodeError> {
+		// TODO: Castaway optimize Vec<u8>?
+		let mut buffer = Vec::new();
+
+		while !r.read_terminal()? {
+			buffer.push(D::decode(r)?);
+		}
+
+		Ok(buffer)
+	}
+}
+
+impl<D: Decode> Decode for Box<D> {
+	fn decode<R: BufRead>(r: &mut Reader<R>) -> Result<Self, DecodeError> {
+		Ok(Box::new(D::decode(r)?))
+	}
+}
+
+impl<K: Decode + Hash + Eq, V: Decode, S: BuildHasher + Default> Decode for HashMap<K, V, S> {
+	fn decode<R: BufRead>(r: &mut Reader<R>) -> Result<Self, DecodeError> {
+		let mut res = HashMap::default();
+
+		while !r.read_terminal()? {
+			let k = K::decode(r)?;
+			let v = V::decode(r)?;
+			res.insert(k, v);
+		}
+
+		Ok(res)
+	}
+}
+
+impl<K: Decode + Ord, V: Decode> Decode for BTreeMap<K, V> {
+	fn decode<R: BufRead>(r: &mut Reader<R>) -> Result<Self, DecodeError> {
+		let mut res = BTreeMap::default();
+
+		while !r.read_terminal()? {
+			let k = K::decode(r)?;
+			let v = V::decode(r)?;
+			res.insert(k, v);
+		}
+
+		Ok(res)
+	}
+}
+
+impl<T: Decode + Sized, const SIZE: usize> Decode for [T; SIZE] {
+	fn decode<R: BufRead>(r: &mut Reader<R>) -> Result<Self, DecodeError> {
+		let mut res: MaybeUninit<[T; SIZE]> = MaybeUninit::uninit();
+		// dropper to properly clean up after a possible panics.
+		//
+		// Holds onto the mutable reference and the init count so it can drop all initialized
+		// entries when if the function quits early.
+		struct Dropper<'a, T, const SIZE: usize>(usize, &'a mut [MaybeUninit<T>; SIZE]);
+		impl<T, const SIZE: usize> Drop for Dropper<'_, T, SIZE> {
+			fn drop(&mut self) {
+				for i in 0..self.0 {
+					unsafe { self.1[i].assume_init_drop() }
+				}
+			}
+		}
+
+		// safety: Transmute is safe because the MaybeUninit<[T; S]> has the same representation as
+		// [MaybeUninit<T>; S]
+		let mut dropper = Dropper::<T, SIZE>(0, unsafe {
+			std::mem::transmute::<&mut MaybeUninit<[T; SIZE]>, &mut [MaybeUninit<T>; SIZE]>(
+				&mut res,
+			)
+		});
+
+		while dropper.0 < SIZE {
+			dropper.1[dropper.0] = MaybeUninit::new(T::decode(r)?);
+			dropper.0 += 1;
+		}
+
+		// We have successfully initialized the array so new we forget the dropper so it won't
+		// unitialize the fields.
+		std::mem::forget(dropper);
+
+		// safety: All fields are now initialized.
+		unsafe { Ok(res.assume_init()) }
+	}
+}
+
+macro_rules! impl_decode_tuple {
+    ($($t:ident),*$(,)?) => {
+		impl <$($t: Decode),*> Decode for ($($t,)*){
+			#[allow(non_snake_case)]
+			fn decode<R: BufRead>(_r: &mut Reader<R>) -> Result<Self, DecodeError> {
+				$(let $t = $t::decode(_r)?;)*
+
+				Ok((
+					$($t,)*
+				))
+			}
+		}
+
+    };
+}
+
+impl_decode_tuple!();
+impl_decode_tuple!(A);
+impl_decode_tuple!(A, B);
+impl_decode_tuple!(A, B, C);
+impl_decode_tuple!(A, B, C, D);
+impl_decode_tuple!(A, B, C, D, E);
+impl_decode_tuple!(A, B, C, D, E, F);
+
+macro_rules! impl_decode_prim {
+	($ty:ident,$name:ident) => {
+		impl Decode for $ty {
+			fn decode<R: BufRead>(r: &mut Reader<R>) -> Result<Self, DecodeError> {
+				r.$name()
+			}
+		}
+	};
+}
+
+impl_decode_prim!(u8, read_u8);
+impl_decode_prim!(i8, read_i8);
+impl_decode_prim!(u16, read_u16);
+impl_decode_prim!(i16, read_i16);
+impl_decode_prim!(u32, read_u32);
+impl_decode_prim!(i32, read_i32);
+impl_decode_prim!(u64, read_u64);
+impl_decode_prim!(i64, read_i64);
+impl_decode_prim!(u128, read_u128);
+impl_decode_prim!(i128, read_i128);
+impl_decode_prim!(f32, read_f32);
+impl_decode_prim!(f64, read_f64);
+
+impl<'de> BorrowDecode<'de> for bool {
+	fn borrow_decode(r: &mut BorrowReader<'de>) -> Result<Self, DecodeError> {
+		match r.read_u8()? {
+			2 => Ok(false),
+			3 => Ok(true),
+			_ => Err(DecodeError::InvalidFormat),
+		}
+	}
+}
+
+impl<'de> BorrowDecode<'de> for char {
+	fn borrow_decode(r: &mut BorrowReader<'de>) -> Result<Self, DecodeError> {
+		char::from_u32(r.read_u32()?).ok_or(DecodeError::InvalidFormat)
+	}
+}
+
+impl<'de> BorrowDecode<'de> for String {
+	fn borrow_decode(r: &mut BorrowReader<'de>) -> Result<Self, DecodeError> {
+		r.read_string()
+	}
+}
+
+impl<'de, D: BorrowDecode<'de>> BorrowDecode<'de> for Option<D> {
+	fn borrow_decode(r: &mut BorrowReader<'de>) -> Result<Self, DecodeError> {
+		match r.read_u8()? {
+			2 => Ok(None),
+			3 => Ok(Some(D::borrow_decode(r)?)),
+			_ => Err(DecodeError::InvalidFormat),
+		}
+	}
+}
+
+impl<'de, O: BorrowDecode<'de>, E: BorrowDecode<'de>> BorrowDecode<'de> for Result<O, E> {
+	fn borrow_decode(r: &mut BorrowReader<'de>) -> Result<Self, DecodeError> {
+		match r.read_u8()? {
+			2 => Ok(Ok(O::borrow_decode(r)?)),
+			3 => Ok(Err(E::borrow_decode(r)?)),
+			_ => Err(DecodeError::InvalidFormat),
+		}
+	}
+}
+
+impl<'de> BorrowDecode<'de> for Cow<'de, [u8]> {
+	fn borrow_decode(r: &mut BorrowReader<'de>) -> Result<Self, DecodeError> {
+		r.read_cow()
+	}
+}
+
+impl<'de> BorrowDecode<'de> for Cow<'de, str> {
+	fn borrow_decode(r: &mut BorrowReader<'de>) -> Result<Self, DecodeError> {
+		r.read_str_cow()
+	}
+}
+
+impl<'de, D: BorrowDecode<'de>> BorrowDecode<'de> for Cow<'de, D>
 where
-	T: Deserialize<'de>,
+	D: ToOwned<Owned = D> + BorrowDecode<'de>,
 {
-	let mut deserializer = Deserializer::new(SliceReader::new(bytes));
-	T::deserialize(&mut deserializer)
+	fn borrow_decode(r: &mut BorrowReader<'de>) -> Result<Self, DecodeError> {
+		Ok(Cow::Owned(D::borrow_decode(r)?))
+	}
 }
 
-/// Deserialize data from the given byte reader.
-pub fn deserialize_from<'de, R, T>(reader: R) -> Result<T>
-where
-	R: BufRead,
-	T: Deserialize<'de>,
+impl<'de> BorrowDecode<'de> for Duration {
+	fn borrow_decode(r: &mut BorrowReader<'de>) -> Result<Self, DecodeError> {
+		let secs = r.read_u64()?;
+		let subsec_nanos = r.read_u32()?;
+		if subsec_nanos > 999_999_999 {
+			return Err(DecodeError::message("Duration subsec nanoseconds was out of range"));
+		}
+		Ok(Duration::new(secs, subsec_nanos))
+	}
+}
+
+impl<'de, D: BorrowDecode<'de>> BorrowDecode<'de> for Box<D> {
+	fn borrow_decode(r: &mut BorrowReader<'de>) -> Result<Self, DecodeError> {
+		Ok(Box::new(D::borrow_decode(r)?))
+	}
+}
+
+impl<'de, D: BorrowDecode<'de>> BorrowDecode<'de> for Vec<D> {
+	fn borrow_decode(r: &mut BorrowReader<'de>) -> Result<Self, DecodeError> {
+		// TODO: Castaway optimize Vec<u8>?
+		let mut buffer = Vec::new();
+
+		while !r.read_terminal()? {
+			buffer.push(D::borrow_decode(r)?);
+		}
+
+		Ok(buffer)
+	}
+}
+
+impl<'de, K: BorrowDecode<'de> + Hash + Eq, V: BorrowDecode<'de>, S: BuildHasher + Default>
+	BorrowDecode<'de> for HashMap<K, V, S>
 {
-	let mut deserializer = Deserializer::new(ReadReader::new(reader));
-	T::deserialize(&mut deserializer)
-}
+	fn borrow_decode(r: &mut BorrowReader<'de>) -> Result<Self, DecodeError> {
+		let mut res = HashMap::default();
 
-impl<'de, R: ReadReference<'de>> Deserializer<R> {
-	/// Creates a new ordered bytes encoder whose output will be written to the provided writer.
-	pub fn new(reader: R) -> Deserializer<R> {
-		Deserializer {
-			reader,
+		while !r.read_terminal()? {
+			let k = K::borrow_decode(r)?;
+			let v = V::borrow_decode(r)?;
+			res.insert(k, v);
 		}
-	}
 
-	pub fn move_on(&mut self) -> Result<bool> {
-		let buf = self.reader.fill_buf()?;
-		match buf.first() {
-			Some(v) if v == &0x01 => {
-				self.reader.consume(1);
-				Ok(true)
-			}
-			_ => Ok(false),
-		}
-	}
-
-	/// Deserialize a `u64` that has been serialized using the `serialize_var_u64` method.
-	pub fn deserialize_var_u64(&mut self) -> Result<u64> {
-		let header = self.reader.read_u8()?;
-		let n = header >> 4;
-		let (mut val, _) = ((header & 0x0F) as u64).overflowing_shl(n as u32 * 8);
-		for i in 1..n + 1 {
-			let byte = self.reader.read_u8()?;
-			val += (byte as u64) << ((n - i) * 8);
-		}
-		Ok(val)
-	}
-
-	/// Deserialize an `i64` that has been serialized using the `serialize_var_i64` method.
-	pub fn deserialize_var_i64(&mut self) -> Result<i64> {
-		let header = self.reader.read_u8()?;
-		let mask = ((header ^ 0x80) as i8 >> 7) as u8;
-		let n = ((header >> 3) ^ mask) & 0x0F;
-		let (mut val, _) = (((header ^ mask) & 0x07) as u64).overflowing_shl(n as u32 * 8);
-		for i in 1..n + 1 {
-			let byte = self.reader.read_u8()?;
-			val += ((byte ^ mask) as u64) << ((n - i) * 8);
-		}
-		let final_mask = (((mask as i64) << 63) >> 63) as u64;
-		val ^= final_mask;
-		Ok(val as i64)
+		Ok(res)
 	}
 }
 
-impl<'de, R> serde::de::Deserializer<'de> for &mut Deserializer<R>
-where
-	R: ReadReference<'de>,
-{
-	type Error = Error;
+impl<'de, K: BorrowDecode<'de> + Ord, V: BorrowDecode<'de>> BorrowDecode<'de> for BTreeMap<K, V> {
+	fn borrow_decode(r: &mut BorrowReader<'de>) -> Result<Self, DecodeError> {
+		let mut res = BTreeMap::default();
 
-	fn is_human_readable(&self) -> bool {
-		false
-	}
-
-	fn deserialize_any<V>(self, _visitor: V) -> Result<V::Value>
-	where
-		V: Visitor<'de>,
-	{
-		Err(Error::DeserializeAnyUnsupported)
-	}
-
-	fn deserialize_bool<V>(self, visitor: V) -> Result<V::Value>
-	where
-		V: Visitor<'de>,
-	{
-		let b = self.reader.read_u8()? != 0;
-		visitor.visit_bool(b)
-	}
-
-	fn deserialize_i8<V>(self, visitor: V) -> Result<V::Value>
-	where
-		V: Visitor<'de>,
-	{
-		let i = self.reader.read_i8()?;
-		visitor.visit_i8(i ^ i8::MIN)
-	}
-
-	fn deserialize_i16<V>(self, visitor: V) -> Result<V::Value>
-	where
-		V: Visitor<'de>,
-	{
-		let i = self.reader.read_i16::<BE>()?;
-		visitor.visit_i16(i ^ i16::MIN)
-	}
-
-	fn deserialize_i32<V>(self, visitor: V) -> Result<V::Value>
-	where
-		V: Visitor<'de>,
-	{
-		let i = self.reader.read_i32::<BE>()?;
-		visitor.visit_i32(i ^ i32::MIN)
-	}
-
-	fn deserialize_i64<V>(self, visitor: V) -> Result<V::Value>
-	where
-		V: Visitor<'de>,
-	{
-		let i = self.reader.read_i64::<BE>()?;
-		visitor.visit_i64(i ^ i64::MIN)
-	}
-
-	fn deserialize_u8<V>(self, visitor: V) -> Result<V::Value>
-	where
-		V: Visitor<'de>,
-	{
-		let u = self.reader.read_u8()?;
-		visitor.visit_u8(u)
-	}
-
-	fn deserialize_u16<V>(self, visitor: V) -> Result<V::Value>
-	where
-		V: Visitor<'de>,
-	{
-		let u = self.reader.read_u16::<BE>()?;
-		visitor.visit_u16(u)
-	}
-
-	fn deserialize_u32<V>(self, visitor: V) -> Result<V::Value>
-	where
-		V: Visitor<'de>,
-	{
-		let u = self.reader.read_u32::<BE>()?;
-		visitor.visit_u32(u)
-	}
-
-	fn deserialize_u64<V>(self, visitor: V) -> Result<V::Value>
-	where
-		V: Visitor<'de>,
-	{
-		let u = self.reader.read_u64::<BE>()?;
-		visitor.visit_u64(u)
-	}
-
-	fn deserialize_f32<V>(self, visitor: V) -> Result<V::Value>
-	where
-		V: Visitor<'de>,
-	{
-		let val = self.reader.read_i32::<BE>()?;
-		let t = ((val ^ i32::MIN) >> 31) | i32::MIN;
-		let f: f32 = f32::from_bits((val ^ t) as u32);
-		visitor.visit_f32(f)
-	}
-
-	fn deserialize_f64<V>(self, visitor: V) -> Result<V::Value>
-	where
-		V: Visitor<'de>,
-	{
-		let val = self.reader.read_i64::<BE>()?;
-		let t = ((val ^ i64::MIN) >> 63) | i64::MIN;
-		let f: f64 = f64::from_bits((val ^ t) as u64);
-		visitor.visit_f64(f)
-	}
-
-	fn deserialize_char<V>(self, visitor: V) -> Result<V::Value>
-	where
-		V: Visitor<'de>,
-	{
-		match self.reader.read_reference_until(0u8) {
-			Ok(reference) => {
-				let bytes = match reference {
-					Reference::Borrowed(b) => b,
-					Reference::Copied(b) => b,
-				};
-				let string = std::str::from_utf8(bytes).map_err(|_| Error::InvalidUtf8)?;
-				let c = string.chars().next().ok_or(Error::InvalidUtf8)?;
-				visitor.visit_char(c)
-			}
-			Err(_) => Err(Error::UnexpectedEof),
-		}
-	}
-
-	fn deserialize_str<V>(self, visitor: V) -> Result<V::Value>
-	where
-		V: Visitor<'de>,
-	{
-		match self.reader.read_reference_until(0u8) {
-			Ok(reference) => match reference {
-				Reference::Borrowed(bytes) => {
-					let string = std::str::from_utf8(bytes).map_err(|_| Error::InvalidUtf8)?;
-					visitor.visit_borrowed_str(string)
-				}
-				Reference::Copied(bytes) => {
-					let string = std::str::from_utf8(bytes).map_err(|_| Error::InvalidUtf8)?;
-					visitor.visit_str(string)
-				}
-			},
-			Err(_) => Err(Error::UnexpectedEof),
-		}
-	}
-
-	fn deserialize_string<V>(self, visitor: V) -> Result<V::Value>
-	where
-		V: Visitor<'de>,
-	{
-		self.deserialize_str(visitor)
-	}
-
-	fn deserialize_bytes<V>(self, visitor: V) -> Result<V::Value>
-	where
-		V: Visitor<'de>,
-	{
-		let len = self.reader.read_u64::<BE>()?;
-		match self.reader.read_reference(len as usize)? {
-			Reference::Borrowed(bytes) => visitor.visit_borrowed_bytes(bytes),
-			Reference::Copied(bytes) => visitor.visit_bytes(bytes),
-		}
-	}
-
-	fn deserialize_byte_buf<V>(self, visitor: V) -> Result<V::Value>
-	where
-		V: Visitor<'de>,
-	{
-		let len = self.reader.read_u64::<BE>()?;
-		let bytes = match self.reader.read_reference(len as usize)? {
-			Reference::Borrowed(bytes) => bytes,
-			Reference::Copied(bytes) => bytes,
-		};
-		visitor.visit_byte_buf(bytes.into())
-	}
-
-	fn deserialize_option<V>(self, visitor: V) -> Result<V::Value>
-	where
-		V: Visitor<'de>,
-	{
-		match self.reader.read_u8()? {
-			0 => visitor.visit_none(),
-			1 => visitor.visit_some(&mut *self),
-			b => {
-				let msg = format!("expected `0` or `1` for option tag - found {}", b);
-				Err(Error::Message(msg))
-			}
-		}
-	}
-
-	fn deserialize_unit<V>(self, visitor: V) -> Result<V::Value>
-	where
-		V: Visitor<'de>,
-	{
-		visitor.visit_unit()
-	}
-
-	fn deserialize_unit_struct<V>(self, _name: &'static str, visitor: V) -> Result<V::Value>
-	where
-		V: Visitor<'de>,
-	{
-		visitor.visit_unit()
-	}
-
-	fn deserialize_newtype_struct<V>(self, _name: &'static str, visitor: V) -> Result<V::Value>
-	where
-		V: Visitor<'de>,
-	{
-		visitor.visit_newtype_struct(self)
-	}
-
-	fn deserialize_seq<V>(self, visitor: V) -> Result<V::Value>
-	where
-		V: Visitor<'de>,
-	{
-		struct Access<'de, 'a, R>
-		where
-			R: 'a + ReadReference<'de>,
-		{
-			deserializer: &'a mut Deserializer<R>,
-			_spooky: PhantomData<&'de ()>,
+		while !r.read_terminal()? {
+			let k = K::borrow_decode(r)?;
+			let v = V::borrow_decode(r)?;
+			res.insert(k, v);
 		}
 
-		impl<'de, R> serde::de::SeqAccess<'de> for Access<'de, '_, R>
-		where
-			R: ReadReference<'de>,
-		{
-			type Error = Error;
-
-			fn next_element_seed<T>(&mut self, seed: T) -> Result<Option<T::Value>>
-			where
-				T: serde::de::DeserializeSeed<'de>,
-			{
-				if self.deserializer.move_on()? {
-					return Ok(None);
-				}
-				match serde::de::DeserializeSeed::deserialize(seed, &mut *self.deserializer) {
-					Ok(v) => Ok(Some(v)),
-					Err(Error::Io(ref err)) if err.kind() == io::ErrorKind::UnexpectedEof => {
-						Ok(None)
-					}
-					Err(err) => Err(err),
-				}
-			}
-		}
-
-		visitor.visit_seq(Access {
-			deserializer: self,
-			_spooky: PhantomData,
-		})
-	}
-
-	fn deserialize_tuple<V>(self, len: usize, visitor: V) -> Result<V::Value>
-	where
-		V: Visitor<'de>,
-	{
-		struct Access<'de, 'a, R>
-		where
-			R: 'a + ReadReference<'de>,
-		{
-			deserializer: &'a mut Deserializer<R>,
-			len: usize,
-			_spooky: PhantomData<&'de ()>,
-		}
-
-		impl<'de, R> serde::de::SeqAccess<'de> for Access<'de, '_, R>
-		where
-			R: ReadReference<'de>,
-		{
-			type Error = Error;
-
-			fn next_element_seed<T>(&mut self, seed: T) -> Result<Option<T::Value>>
-			where
-				T: serde::de::DeserializeSeed<'de>,
-			{
-				if self.len == 0 {
-					return Ok(None);
-				}
-				self.len -= 1;
-				let value = serde::de::DeserializeSeed::deserialize(seed, &mut *self.deserializer)?;
-				Ok(Some(value))
-			}
-
-			fn size_hint(&self) -> Option<usize> {
-				Some(self.len)
-			}
-		}
-
-		visitor.visit_seq(Access {
-			deserializer: self,
-			len,
-			_spooky: PhantomData,
-		})
-	}
-
-	fn deserialize_tuple_struct<V>(
-		self,
-		_name: &'static str,
-		len: usize,
-		visitor: V,
-	) -> Result<V::Value>
-	where
-		V: Visitor<'de>,
-	{
-		self.deserialize_tuple(len, visitor)
-	}
-
-	fn deserialize_map<V>(self, visitor: V) -> Result<V::Value>
-	where
-		V: Visitor<'de>,
-	{
-		struct Access<'de, 'a, R>
-		where
-			R: 'a + ReadReference<'de>,
-		{
-			deserializer: &'a mut Deserializer<R>,
-			_spooky: PhantomData<&'de ()>,
-		}
-
-		impl<'de, R> serde::de::MapAccess<'de> for Access<'de, '_, R>
-		where
-			R: ReadReference<'de>,
-		{
-			type Error = Error;
-
-			fn next_key_seed<T>(&mut self, seed: T) -> Result<Option<T::Value>>
-			where
-				T: serde::de::DeserializeSeed<'de>,
-			{
-				if self.deserializer.move_on()? {
-					return Ok(None);
-				}
-				match serde::de::DeserializeSeed::deserialize(seed, &mut *self.deserializer) {
-					Ok(v) => Ok(Some(v)),
-					Err(Error::Io(ref err)) if err.kind() == io::ErrorKind::UnexpectedEof => {
-						Ok(None)
-					}
-					Err(err) => Err(err),
-				}
-			}
-
-			fn next_value_seed<T>(&mut self, seed: T) -> Result<T::Value>
-			where
-				T: serde::de::DeserializeSeed<'de>,
-			{
-				serde::de::DeserializeSeed::deserialize(seed, &mut *self.deserializer)
-			}
-		}
-
-		visitor.visit_map(Access {
-			deserializer: self,
-			_spooky: PhantomData,
-		})
-	}
-
-	fn deserialize_struct<V>(
-		self,
-		_name: &'static str,
-		fields: &'static [&'static str],
-		visitor: V,
-	) -> Result<V::Value>
-	where
-		V: Visitor<'de>,
-	{
-		self.deserialize_tuple(fields.len(), visitor)
-	}
-
-	fn deserialize_enum<V>(
-		self,
-		_name: &'static str,
-		_fields: &'static [&'static str],
-		visitor: V,
-	) -> Result<V::Value>
-	where
-		V: Visitor<'de>,
-	{
-		visitor.visit_enum(self)
-	}
-
-	fn deserialize_ignored_any<V>(self, _visitor: V) -> Result<V::Value>
-	where
-		V: serde::de::Visitor<'de>,
-	{
-		Err(Error::DeserializeAnyUnsupported)
-	}
-
-	fn deserialize_identifier<V>(self, _visitor: V) -> Result<V::Value>
-	where
-		V: serde::de::Visitor<'de>,
-	{
-		Err(Error::DeserializeAnyUnsupported)
+		Ok(res)
 	}
 }
 
-impl<'de, R> serde::de::EnumAccess<'de> for &mut Deserializer<R>
-where
-	R: ReadReference<'de>,
-{
-	type Error = Error;
-	type Variant = Self;
+impl<'de, T: BorrowDecode<'de> + Sized, const SIZE: usize> BorrowDecode<'de> for [T; SIZE] {
+	fn borrow_decode(r: &mut BorrowReader<'de>) -> Result<Self, DecodeError> {
+		// TODO: Castaway optimize [T;SIZE]?
+		let mut res: MaybeUninit<[T; SIZE]> = MaybeUninit::uninit();
+		// dropper to properly clean up after a possible panics.
+		//
+		// Holds onto the mutable reference and the init count so it can drop all initialized
+		// entries if the function quits early.
+		struct Dropper<'a, T, const SIZE: usize>(usize, &'a mut [MaybeUninit<T>; SIZE]);
+		impl<T, const SIZE: usize> Drop for Dropper<'_, T, SIZE> {
+			fn drop(&mut self) {
+				for i in 0..self.0 {
+					unsafe { self.1[i].assume_init_drop() }
+				}
+			}
+		}
 
-	fn variant_seed<V>(self, seed: V) -> Result<(V::Value, Self::Variant)>
-	where
-		V: serde::de::DeserializeSeed<'de>,
-	{
-		let idx: u32 = serde::de::Deserialize::deserialize(&mut *self)?;
-		let val: Result<_> = seed.deserialize(serde::de::IntoDeserializer::into_deserializer(idx));
-		Ok((val?, self))
+		// safety: Transmute is safe because the MaybeUninit<[T; S]> has the same representation as
+		// [MaybeUninit<T>; S]
+		let mut dropper = Dropper::<T, SIZE>(0, unsafe {
+			std::mem::transmute::<&mut MaybeUninit<[T; SIZE]>, &mut [MaybeUninit<T>; SIZE]>(
+				&mut res,
+			)
+		});
+
+		while dropper.0 < SIZE {
+			dropper.1[dropper.0] = MaybeUninit::new(T::borrow_decode(r)?);
+			dropper.0 += 1;
+		}
+
+		// We have successfully initialized the array so new we forget the dropper so it won't
+		// unitialize the fields.
+		std::mem::forget(dropper);
+
+		// safety: All fields are now initialized.
+		unsafe { Ok(res.assume_init()) }
 	}
 }
 
-impl<'de, R> serde::de::VariantAccess<'de> for &mut Deserializer<R>
-where
-	R: ReadReference<'de>,
-{
-	type Error = Error;
+macro_rules! impl_borrow_decode_tuple {
+    ($($t:ident),*$(,)?) => {
+		impl <'de, $($t: BorrowDecode<'de>),*> BorrowDecode<'de> for ($($t,)*){
+			#[allow(non_snake_case)]
+			fn borrow_decode(_r: &mut BorrowReader<'de>) -> Result<Self, DecodeError> {
+				$(let $t = $t::borrow_decode(_r)?;)*
 
-	fn unit_variant(self) -> Result<()> {
-		Ok(())
-	}
+				Ok((
+					$($t,)*
+				))
+			}
+		}
 
-	fn newtype_variant_seed<T>(self, seed: T) -> Result<T::Value>
-	where
-		T: serde::de::DeserializeSeed<'de>,
-	{
-		serde::de::DeserializeSeed::deserialize(seed, self)
-	}
-
-	fn tuple_variant<V>(self, len: usize, visitor: V) -> Result<V::Value>
-	where
-		V: serde::de::Visitor<'de>,
-	{
-		serde::de::Deserializer::deserialize_tuple(self, len, visitor)
-	}
-
-	fn struct_variant<V>(self, fields: &'static [&'static str], visitor: V) -> Result<V::Value>
-	where
-		V: serde::de::Visitor<'de>,
-	{
-		serde::de::Deserializer::deserialize_tuple(self, fields.len(), visitor)
-	}
+    };
 }
+
+impl_borrow_decode_tuple!();
+impl_borrow_decode_tuple!(A);
+impl_borrow_decode_tuple!(A, B);
+impl_borrow_decode_tuple!(A, B, C);
+impl_borrow_decode_tuple!(A, B, C, D);
+impl_borrow_decode_tuple!(A, B, C, D, E);
+impl_borrow_decode_tuple!(A, B, C, D, E, F);
+
+macro_rules! impl_borrow_decode_prim {
+	($ty:ident,$name:ident) => {
+		impl<'de> BorrowDecode<'de> for $ty {
+			fn borrow_decode(r: &mut BorrowReader<'de>) -> Result<Self, DecodeError> {
+				r.$name()
+			}
+		}
+	};
+}
+
+impl_borrow_decode_prim!(u8, read_u8);
+impl_borrow_decode_prim!(i8, read_i8);
+impl_borrow_decode_prim!(u16, read_u16);
+impl_borrow_decode_prim!(i16, read_i16);
+impl_borrow_decode_prim!(u32, read_u32);
+impl_borrow_decode_prim!(i32, read_i32);
+impl_borrow_decode_prim!(u64, read_u64);
+impl_borrow_decode_prim!(i64, read_i64);
+impl_borrow_decode_prim!(u128, read_u128);
+impl_borrow_decode_prim!(i128, read_i128);
+impl_borrow_decode_prim!(f32, read_f32);
+impl_borrow_decode_prim!(f64, read_f64);
