@@ -55,7 +55,7 @@ impl<R: BufRead> Reader<R> {
 	/// Returns true if the next byte is a terminator, otherwise returns false and the reader does
 	/// not advance.
 	///
-	/// Calling this function marks the next byte as being possible escaped.
+	/// Sets the `expect_escaped` flag marking the next byte as being possibly escaped.
 	#[inline]
 	pub fn read_terminal(&mut self) -> Result<bool, DecodeError> {
 		self.expect_escaped = true;
@@ -206,6 +206,8 @@ impl<'de> BorrowReader<'de> {
 	///
 	/// Returns true if the next byte is a terminator, otherwise returns false and the reader does
 	/// not advance.
+	///
+	/// Sets the `expect_escaped` flag marking the next byte as being possibly escaped.
 	#[inline]
 	pub fn read_terminal(&mut self) -> Result<bool, DecodeError> {
 		self.expect_escaped = true;
