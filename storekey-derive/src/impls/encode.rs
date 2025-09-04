@@ -4,7 +4,14 @@ use syn::{DeriveInput, Ident, Result, parse2, spanned::Spanned};
 
 use crate::impls::{build_generics_types, extract_formats};
 
-pub fn impl_format(input: &DeriveInput, format: &TokenStream) -> Result<TokenStream> {
+pub fn impl_format(input: &DeriveInput, format: Option<&TokenStream>) -> Result<TokenStream> {
+	let mut store = None;
+	let (format_generic, format) = if let Some(f) = format {
+		(quote! {}, f)
+	} else {
+		(quote! { FormatGen,  }, &*store.insert(quote! {FormatGen}))
+	};
+
 	let name = &input.ident;
 
 	let inner = match &input.data {
@@ -104,13 +111,15 @@ pub fn impl_format(input: &DeriveInput, format: &TokenStream) -> Result<TokenStr
 	};
 
 	let (_, ty_generics, where_clause) = input.generics.split_for_impl();
-	let type_bounds =
-		build_generics_types(parse2(quote! { ::storekey::Encode }).unwrap(), &input.generics);
+	let type_bounds = build_generics_types(
+		parse2(quote! { ::storekey::Encode<#format> }).unwrap(),
+		&input.generics,
+	);
 	let lifetimes = input.generics.lifetimes();
 	let consts = input.generics.const_params();
 
 	Ok(quote! {
-		impl <#(#lifetimes,)* #type_bounds #(#consts,)* > ::storekey::Encode<#format> for #name  #ty_generics #where_clause {
+		impl <#(#lifetimes,)* #format_generic #type_bounds #(#consts,)* > ::storekey::Encode<#format> for #name  #ty_generics #where_clause {
 			fn encode<W: ::std::io::Write>(&self, _w: &mut ::storekey::Writer<W>) -> ::std::result::Result<(), ::storekey::EncodeError>{
 				#inner
 				Ok(())
@@ -124,7 +133,14 @@ pub fn encode(input: TokenStream) -> Result<TokenStream> {
 
 	let formats = extract_formats(&input.attrs)?;
 
-	let formats = formats.iter().map(|x| impl_format(&input, x)).collect::<Result<Vec<_>>>()?;
+	let formats = if formats.is_empty() {
+		vec![impl_format(&input, None)?]
+	} else {
+		formats
+			.iter()
+			.map(|x| impl_format(&input, Some(x)))
+			.collect::<Result<Vec<TokenStream>>>()?
+	};
 
 	Ok(quote! { #(#formats)* })
 }

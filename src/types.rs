@@ -35,13 +35,13 @@ impl EscapedSlice {
 	}
 }
 
-impl Encode for &EscapedSlice {
+impl<F> Encode<F> for EscapedSlice {
 	fn encode<W: Write>(&self, w: &mut Writer<W>) -> Result<(), EncodeError> {
 		w.write_escaped_slice(self)
 	}
 }
 
-impl<'de> BorrowDecode<'de> for &'de EscapedSlice {
+impl<'de, F> BorrowDecode<'de, F> for &'de EscapedSlice {
 	fn borrow_decode(w: &mut BorrowReader<'de>) -> Result<Self, DecodeError> {
 		w.read_escaped_slice()
 	}
@@ -151,13 +151,13 @@ impl EscapedStr {
 	}
 }
 
-impl Encode for &EscapedStr {
+impl<F> Encode<F> for EscapedStr {
 	fn encode<W: Write>(&self, w: &mut Writer<W>) -> Result<(), EncodeError> {
 		w.write_escaped_slice(self.as_slice())
 	}
 }
 
-impl<'de> BorrowDecode<'de> for &'de EscapedStr {
+impl<'de, F> BorrowDecode<'de, F> for &'de EscapedStr {
 	fn borrow_decode(w: &mut BorrowReader<'de>) -> Result<Self, DecodeError> {
 		w.read_escaped_str()
 	}

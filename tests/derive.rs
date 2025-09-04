@@ -180,6 +180,7 @@ fn basic_enum() {
 pub enum OtherFormat {}
 
 #[derive(Encode)]
+#[storekey(format = "()")]
 pub struct EncodeDiff(u16);
 
 impl Encode<OtherFormat> for EncodeDiff {

@@ -4,8 +4,15 @@ use syn::{DeriveInput, Ident, Result, parse2, spanned::Spanned};
 
 use crate::impls::{build_generics_types, extract_formats};
 
-pub fn impl_format(input: &DeriveInput, format: &TokenStream) -> Result<TokenStream> {
+pub fn impl_format(input: &DeriveInput, format: Option<&TokenStream>) -> Result<TokenStream> {
 	let name = &input.ident;
+
+	let mut store = None;
+	let (format_generic, format) = if let Some(f) = format {
+		(quote! {}, f)
+	} else {
+		(quote! { FormatGen,  }, &*store.insert(quote! {FormatGen}))
+	};
 
 	let inner = match &input.data {
 		syn::Data::Struct(data_struct) => {
@@ -107,7 +114,7 @@ pub fn impl_format(input: &DeriveInput, format: &TokenStream) -> Result<TokenStr
 	let consts = input.generics.const_params();
 
 	Ok(quote! {
-		impl <#(#lifetimes,)* #type_bounds #(#consts,)* > ::storekey::Decode<#format> for #name #ty_generics #where_clause {
+		impl <#(#lifetimes,)* #format_generic #type_bounds #(#consts,)* > ::storekey::Decode<#format> for #name #ty_generics #where_clause {
 			fn decode<R: ::std::io::BufRead>(_r: &mut ::storekey::Reader<R>) -> ::std::result::Result<Self, ::storekey::DecodeError>{
 				#inner
 			}
@@ -120,7 +127,11 @@ pub fn decode(input: TokenStream) -> Result<TokenStream> {
 
 	let formats = extract_formats(&input.attrs)?;
 
-	let formats = formats.iter().map(|x| impl_format(&input, x)).collect::<Result<Vec<_>>>()?;
+	let formats = if formats.is_empty() {
+		vec![impl_format(&input, None)?]
+	} else {
+		formats.iter().map(|x| impl_format(&input, Some(x))).collect::<Result<Vec<_>>>()?
+	};
 
 	Ok(quote! { #(#formats)* })
 }

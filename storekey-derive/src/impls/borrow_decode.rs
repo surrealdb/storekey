@@ -4,7 +4,15 @@ use syn::{DeriveInput, Ident, Result, parse2, spanned::Spanned};
 
 use crate::impls::{build_generics_types, extract_formats};
 
-fn impl_format(input: &DeriveInput, format: &TokenStream) -> Result<TokenStream> {
+fn impl_format(input: &DeriveInput, format: Option<&TokenStream>) -> Result<TokenStream> {
+	let mut store = None;
+
+	let (format_generic, format) = if let Some(f) = format {
+		(quote! {}, f)
+	} else {
+		(quote! { FormatGen,  }, &*store.insert(quote! {FormatGen}))
+	};
+
 	let mut lifetime = quote! { 'de };
 	let mut found_lifetime = false;
 	for l in input.generics.lifetimes() {
@@ -120,7 +128,7 @@ fn impl_format(input: &DeriveInput, format: &TokenStream) -> Result<TokenStream>
 	let consts = input.generics.const_params();
 
 	Ok(quote! {
-		impl <#lifetime, #type_bounds #(#consts,)* > ::storekey::BorrowDecode<#lifetime, #format> for #name #ty_generics #where_clause {
+		impl <#lifetime, #format_generic #type_bounds #(#consts,)* > ::storekey::BorrowDecode<#lifetime, #format> for #name #ty_generics #where_clause {
 			fn borrow_decode(_r: &mut ::storekey::BorrowReader<#lifetime>) -> ::std::result::Result<Self, ::storekey::DecodeError>{
 				#inner
 			}
@@ -131,9 +139,16 @@ fn impl_format(input: &DeriveInput, format: &TokenStream) -> Result<TokenStream>
 pub fn borrow_decode(input: TokenStream) -> Result<TokenStream> {
 	let input = parse2::<DeriveInput>(input)?;
 
-	let f = extract_formats(&input.attrs)?;
+	let formats = extract_formats(&input.attrs)?;
 
-	let formats = f.iter().map(|x| impl_format(&input, x)).collect::<Result<Vec<TokenStream>>>()?;
+	let formats = if formats.is_empty() {
+		vec![impl_format(&input, None)?]
+	} else {
+		formats
+			.iter()
+			.map(|x| impl_format(&input, Some(x)))
+			.collect::<Result<Vec<TokenStream>>>()?
+	};
 
 	Ok(quote! { #(#formats)* })
 }

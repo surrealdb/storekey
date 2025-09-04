@@ -56,10 +56,6 @@ fn extract_formats(attrs: &[Attribute]) -> Result<Vec<TokenStream>> {
 		}
 	}
 
-	if res.is_empty() {
-		res.push(quote! {()})
-	}
-
 	Ok(res)
 }
 
