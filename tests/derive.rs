@@ -1,7 +1,8 @@
 use std::{borrow::Cow, fmt::Debug};
 
 use storekey::{
-	decode, decode_borrow, encode_vec, BorrowDecode, Decode, Encode, EscapedStr, ToEscaped,
+	decode, decode_borrow, encode_vec, encode_vec_format, BorrowDecode, Decode, Encode, EscapedStr,
+	ToEscaped,
 };
 
 fn roundtrip<T: Encode + Decode + for<'a> BorrowDecode<'a> + Debug + PartialEq>(a: T) {
@@ -174,4 +175,38 @@ fn basic_enum() {
 		a: vec![0, 0, 0, 1, 1],
 		b: "\x00\x01 other things".to_string(),
 	});
+}
+
+pub enum OtherFormat {}
+
+#[derive(Encode)]
+pub struct EncodeDiff(u16);
+
+impl Encode<OtherFormat> for EncodeDiff {
+	fn encode<W: std::io::Write>(
+		&self,
+		w: &mut storekey::Writer<W>,
+	) -> Result<(), storekey::EncodeError> {
+		w.write_u32(self.0 as u32)
+	}
+}
+
+#[derive(Encode)]
+#[storekey(format = "()")]
+#[storekey(format = "OtherFormat")]
+pub struct FormatContainer {
+	a: EncodeDiff,
+	b: EncodeDiff,
+}
+
+#[test]
+fn formats() {
+	let example = FormatContainer {
+		a: EncodeDiff(1),
+		b: EncodeDiff(2),
+	};
+	let data = encode_vec(&example).unwrap();
+	assert_eq!(data, [0, 1, 0, 2]);
+	let data = encode_vec_format::<OtherFormat, _>(&example).unwrap();
+	assert_eq!(data, [0, 0, 0, 1, 0, 0, 0, 2]);
 }

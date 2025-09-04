@@ -10,7 +10,7 @@ use crate::DecodeError;
 use super::reader::BorrowReader;
 use super::{BorrowDecode, Decode, Reader};
 
-impl Decode for bool {
+impl<F> Decode<F> for bool {
 	fn decode<R: BufRead>(r: &mut Reader<R>) -> Result<Self, DecodeError> {
 		match r.read_u8()? {
 			2 => Ok(false),
@@ -20,20 +20,20 @@ impl Decode for bool {
 	}
 }
 
-impl Decode for char {
+impl<F> Decode<F> for char {
 	fn decode<R: BufRead>(r: &mut Reader<R>) -> Result<Self, DecodeError> {
 		let c = r.read_u32()?;
 		char::from_u32(c).ok_or(DecodeError::InvalidFormat)
 	}
 }
 
-impl Decode for String {
+impl<F> Decode<F> for String {
 	fn decode<R: BufRead>(r: &mut Reader<R>) -> Result<Self, DecodeError> {
 		r.read_string()
 	}
 }
 
-impl<D: Decode> Decode for Option<D> {
+impl<F, D: Decode<F>> Decode<F> for Option<D> {
 	fn decode<R: BufRead>(r: &mut Reader<R>) -> Result<Self, DecodeError> {
 		match r.read_u8()? {
 			// Don't use 0 or 1 as those need to be escaped.
@@ -45,7 +45,17 @@ impl<D: Decode> Decode for Option<D> {
 	}
 }
 
-impl<O: Decode, E: Decode> Decode for Result<O, E> {
+impl<'a, F, O> Decode<F> for Cow<'a, O>
+where
+	O: ToOwned + ?Sized,
+	O::Owned: Decode<F>,
+{
+	fn decode<R: BufRead>(r: &mut Reader<R>) -> Result<Self, DecodeError> {
+		Ok(Cow::Owned(O::Owned::decode(r)?))
+	}
+}
+
+impl<F, O: Decode<F>, E: Decode<F>> Decode<F> for Result<O, E> {
 	fn decode<R: BufRead>(r: &mut Reader<R>) -> Result<Self, DecodeError> {
 		match r.read_u8()? {
 			// Don't use 0 or 1 as those need to be escaped.
@@ -57,7 +67,7 @@ impl<O: Decode, E: Decode> Decode for Result<O, E> {
 	}
 }
 
-impl<D: Decode> Decode for Vec<D> {
+impl<F, D: Decode<F>> Decode<F> for Vec<D> {
 	fn decode<R: BufRead>(r: &mut Reader<R>) -> Result<Self, DecodeError> {
 		// TODO: Castaway optimize Vec<u8>?
 		let mut buffer = Vec::new();
@@ -70,13 +80,15 @@ impl<D: Decode> Decode for Vec<D> {
 	}
 }
 
-impl<D: Decode> Decode for Box<D> {
+impl<F, D: Decode<F>> Decode<F> for Box<D> {
 	fn decode<R: BufRead>(r: &mut Reader<R>) -> Result<Self, DecodeError> {
 		Ok(Box::new(D::decode(r)?))
 	}
 }
 
-impl<K: Decode + Hash + Eq, V: Decode, S: BuildHasher + Default> Decode for HashMap<K, V, S> {
+impl<F, K: Decode<F> + Hash + Eq, V: Decode<F>, S: BuildHasher + Default> Decode<F>
+	for HashMap<K, V, S>
+{
 	fn decode<R: BufRead>(r: &mut Reader<R>) -> Result<Self, DecodeError> {
 		let mut res = HashMap::default();
 
@@ -90,7 +102,7 @@ impl<K: Decode + Hash + Eq, V: Decode, S: BuildHasher + Default> Decode for Hash
 	}
 }
 
-impl<K: Decode + Ord, V: Decode> Decode for BTreeMap<K, V> {
+impl<F, K: Decode<F> + Ord, V: Decode<F>> Decode<F> for BTreeMap<K, V> {
 	fn decode<R: BufRead>(r: &mut Reader<R>) -> Result<Self, DecodeError> {
 		let mut res = BTreeMap::default();
 
@@ -104,7 +116,7 @@ impl<K: Decode + Ord, V: Decode> Decode for BTreeMap<K, V> {
 	}
 }
 
-impl<T: Decode + Sized, const SIZE: usize> Decode for [T; SIZE] {
+impl<F, T: Decode<F> + Sized, const SIZE: usize> Decode<F> for [T; SIZE] {
 	fn decode<R: BufRead>(r: &mut Reader<R>) -> Result<Self, DecodeError> {
 		let mut res: MaybeUninit<[T; SIZE]> = MaybeUninit::uninit();
 		// dropper to properly clean up after a possible panics.
@@ -144,7 +156,7 @@ impl<T: Decode + Sized, const SIZE: usize> Decode for [T; SIZE] {
 
 macro_rules! impl_decode_tuple {
     ($($t:ident),*$(,)?) => {
-		impl <$($t: Decode),*> Decode for ($($t,)*){
+		impl<Format, $($t: Decode<Format>),*> Decode<Format> for ($($t,)*){
 			#[allow(non_snake_case)]
 			fn decode<R: BufRead>(_r: &mut Reader<R>) -> Result<Self, DecodeError> {
 				$(let $t = $t::decode(_r)?;)*
@@ -168,7 +180,7 @@ impl_decode_tuple!(A, B, C, D, E, F);
 
 macro_rules! impl_decode_prim {
 	($ty:ident,$name:ident) => {
-		impl Decode for $ty {
+		impl<F> Decode<F> for $ty {
 			fn decode<R: BufRead>(r: &mut Reader<R>) -> Result<Self, DecodeError> {
 				r.$name()
 			}
@@ -189,7 +201,7 @@ impl_decode_prim!(i128, read_i128);
 impl_decode_prim!(f32, read_f32);
 impl_decode_prim!(f64, read_f64);
 
-impl<'de> BorrowDecode<'de> for bool {
+impl<'de, F> BorrowDecode<'de, F> for bool {
 	fn borrow_decode(r: &mut BorrowReader<'de>) -> Result<Self, DecodeError> {
 		match r.read_u8()? {
 			2 => Ok(false),
@@ -199,19 +211,19 @@ impl<'de> BorrowDecode<'de> for bool {
 	}
 }
 
-impl<'de> BorrowDecode<'de> for char {
+impl<'de, F> BorrowDecode<'de, F> for char {
 	fn borrow_decode(r: &mut BorrowReader<'de>) -> Result<Self, DecodeError> {
 		char::from_u32(r.read_u32()?).ok_or(DecodeError::InvalidFormat)
 	}
 }
 
-impl<'de> BorrowDecode<'de> for String {
+impl<'de, F> BorrowDecode<'de, F> for String {
 	fn borrow_decode(r: &mut BorrowReader<'de>) -> Result<Self, DecodeError> {
 		r.read_string()
 	}
 }
 
-impl<'de, D: BorrowDecode<'de>> BorrowDecode<'de> for Option<D> {
+impl<'de, F, D: BorrowDecode<'de, F>> BorrowDecode<'de, F> for Option<D> {
 	fn borrow_decode(r: &mut BorrowReader<'de>) -> Result<Self, DecodeError> {
 		match r.read_u8()? {
 			2 => Ok(None),
@@ -221,7 +233,9 @@ impl<'de, D: BorrowDecode<'de>> BorrowDecode<'de> for Option<D> {
 	}
 }
 
-impl<'de, O: BorrowDecode<'de>, E: BorrowDecode<'de>> BorrowDecode<'de> for Result<O, E> {
+impl<'de, F, O: BorrowDecode<'de, F>, E: BorrowDecode<'de, F>> BorrowDecode<'de, F>
+	for Result<O, E>
+{
 	fn borrow_decode(r: &mut BorrowReader<'de>) -> Result<Self, DecodeError> {
 		match r.read_u8()? {
 			2 => Ok(Ok(O::borrow_decode(r)?)),
@@ -231,28 +245,28 @@ impl<'de, O: BorrowDecode<'de>, E: BorrowDecode<'de>> BorrowDecode<'de> for Resu
 	}
 }
 
-impl<'de> BorrowDecode<'de> for Cow<'de, [u8]> {
+impl<'de, F> BorrowDecode<'de, F> for Cow<'de, [u8]> {
 	fn borrow_decode(r: &mut BorrowReader<'de>) -> Result<Self, DecodeError> {
 		r.read_cow()
 	}
 }
 
-impl<'de> BorrowDecode<'de> for Cow<'de, str> {
+impl<'de, F> BorrowDecode<'de, F> for Cow<'de, str> {
 	fn borrow_decode(r: &mut BorrowReader<'de>) -> Result<Self, DecodeError> {
 		r.read_str_cow()
 	}
 }
 
-impl<'de, D: BorrowDecode<'de>> BorrowDecode<'de> for Cow<'de, D>
+impl<'de, F, D: BorrowDecode<'de, F>> BorrowDecode<'de, F> for Cow<'de, D>
 where
-	D: ToOwned<Owned = D> + BorrowDecode<'de>,
+	D: ToOwned<Owned = D> + BorrowDecode<'de, F>,
 {
 	fn borrow_decode(r: &mut BorrowReader<'de>) -> Result<Self, DecodeError> {
 		Ok(Cow::Owned(D::borrow_decode(r)?))
 	}
 }
 
-impl<'de> BorrowDecode<'de> for Duration {
+impl<'de, F> BorrowDecode<'de, F> for Duration {
 	fn borrow_decode(r: &mut BorrowReader<'de>) -> Result<Self, DecodeError> {
 		let secs = r.read_u64()?;
 		let subsec_nanos = r.read_u32()?;
@@ -263,13 +277,13 @@ impl<'de> BorrowDecode<'de> for Duration {
 	}
 }
 
-impl<'de, D: BorrowDecode<'de>> BorrowDecode<'de> for Box<D> {
+impl<'de, F, D: BorrowDecode<'de, F>> BorrowDecode<'de, F> for Box<D> {
 	fn borrow_decode(r: &mut BorrowReader<'de>) -> Result<Self, DecodeError> {
 		Ok(Box::new(D::borrow_decode(r)?))
 	}
 }
 
-impl<'de, D: BorrowDecode<'de>> BorrowDecode<'de> for Vec<D> {
+impl<'de, F, D: BorrowDecode<'de, F>> BorrowDecode<'de, F> for Vec<D> {
 	fn borrow_decode(r: &mut BorrowReader<'de>) -> Result<Self, DecodeError> {
 		// TODO: Castaway optimize Vec<u8>?
 		let mut buffer = Vec::new();
@@ -282,8 +296,13 @@ impl<'de, D: BorrowDecode<'de>> BorrowDecode<'de> for Vec<D> {
 	}
 }
 
-impl<'de, K: BorrowDecode<'de> + Hash + Eq, V: BorrowDecode<'de>, S: BuildHasher + Default>
-	BorrowDecode<'de> for HashMap<K, V, S>
+impl<
+		'de,
+		F,
+		K: BorrowDecode<'de, F> + Hash + Eq,
+		V: BorrowDecode<'de, F>,
+		S: BuildHasher + Default,
+	> BorrowDecode<'de, F> for HashMap<K, V, S>
 {
 	fn borrow_decode(r: &mut BorrowReader<'de>) -> Result<Self, DecodeError> {
 		let mut res = HashMap::default();
@@ -298,7 +317,9 @@ impl<'de, K: BorrowDecode<'de> + Hash + Eq, V: BorrowDecode<'de>, S: BuildHasher
 	}
 }
 
-impl<'de, K: BorrowDecode<'de> + Ord, V: BorrowDecode<'de>> BorrowDecode<'de> for BTreeMap<K, V> {
+impl<'de, F, K: BorrowDecode<'de, F> + Ord, V: BorrowDecode<'de, F>> BorrowDecode<'de, F>
+	for BTreeMap<K, V>
+{
 	fn borrow_decode(r: &mut BorrowReader<'de>) -> Result<Self, DecodeError> {
 		let mut res = BTreeMap::default();
 
@@ -312,7 +333,9 @@ impl<'de, K: BorrowDecode<'de> + Ord, V: BorrowDecode<'de>> BorrowDecode<'de> fo
 	}
 }
 
-impl<'de, T: BorrowDecode<'de> + Sized, const SIZE: usize> BorrowDecode<'de> for [T; SIZE] {
+impl<'de, F, T: BorrowDecode<'de, F> + Sized, const SIZE: usize> BorrowDecode<'de, F>
+	for [T; SIZE]
+{
 	fn borrow_decode(r: &mut BorrowReader<'de>) -> Result<Self, DecodeError> {
 		// TODO: Castaway optimize [T;SIZE]?
 		let mut res: MaybeUninit<[T; SIZE]> = MaybeUninit::uninit();
@@ -353,7 +376,7 @@ impl<'de, T: BorrowDecode<'de> + Sized, const SIZE: usize> BorrowDecode<'de> for
 
 macro_rules! impl_borrow_decode_tuple {
     ($($t:ident),*$(,)?) => {
-		impl <'de, $($t: BorrowDecode<'de>),*> BorrowDecode<'de> for ($($t,)*){
+		impl <'de,Format, $($t: BorrowDecode<'de,Format>),*> BorrowDecode<'de,Format> for ($($t,)*){
 			#[allow(non_snake_case)]
 			fn borrow_decode(_r: &mut BorrowReader<'de>) -> Result<Self, DecodeError> {
 				$(let $t = $t::borrow_decode(_r)?;)*
@@ -377,7 +400,7 @@ impl_borrow_decode_tuple!(A, B, C, D, E, F);
 
 macro_rules! impl_borrow_decode_prim {
 	($ty:ident,$name:ident) => {
-		impl<'de> BorrowDecode<'de> for $ty {
+		impl<'de, F> BorrowDecode<'de, F> for $ty {
 			fn borrow_decode(r: &mut BorrowReader<'de>) -> Result<Self, DecodeError> {
 				r.$name()
 			}

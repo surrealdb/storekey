@@ -195,8 +195,8 @@ impl From<io::Error> for DecodeError {
 ///
 /// impl Encode for MyStruct{
 ///     fn encode<W: Write>(&self, w: &mut Writer<W>) -> Result<(), EncodeError>{
-///         self.field_a.encode(w)?;
-///         self.field_b.encode(w)?;
+///         Encode::<()>::encode(&self.field_a,w)?;
+///         Encode::<()>::encode(&self.field_b,w)?;
 ///         Ok(())
 ///     }
 /// }
@@ -221,13 +221,13 @@ impl From<io::Error> for DecodeError {
 ///                 // One good pattern is to avoid using 0 or 1 as a discriminant as these might need
 ///                 // to be escaped
 ///                 w.write_u8(2)?;
-///                 x.encode(w)?;
+///                 Encode::<()>::encode(x,w)?;
 ///             }
 ///             MyEnum::VariantB(x) => {
 ///                 // One good pattern is to avoid using 0 or 1 as a discriminant as these might need
 ///                 // to be escaped
 ///                 w.write_u8(3)?;
-///                 x.encode(w)?;
+///                 Encode::<()>::encode(x,w)?;
 ///             }
 ///         }
 ///         Ok(())
@@ -254,7 +254,7 @@ impl From<io::Error> for DecodeError {
 ///             // as the vec could have been shorter. So we need to mark these spots so that the
 ///             // writer knows to escape the null byte.
 ///             w.mark_terminator();
-///             v.encode(w)?;
+///             Encode::<()>::encode(v,w)?;
 ///         }
 ///         // We have finished the list so we need to mark the end.
 ///         w.write_terminator()?;
@@ -263,7 +263,7 @@ impl From<io::Error> for DecodeError {
 /// }
 /// ```
 ///
-pub trait Encode {
+pub trait Encode<Format = ()> {
 	fn encode<W: Write>(&self, w: &mut Writer<W>) -> Result<(), EncodeError>;
 }
 
@@ -287,8 +287,8 @@ pub trait Encode {
 ///
 /// impl Decode for MyStruct{
 ///     fn decode<R: BufRead>(r: &mut Reader<R>) -> Result<Self, DecodeError>{
-///         let field_a = Decode::decode(r)?;
-///         let field_b = Decode::decode(r)?;
+///         let field_a = Decode::<()>::decode(r)?;
+///         let field_b = Decode::<()>::decode(r)?;
 ///         Ok(MyStruct{
 ///             field_a,
 ///             field_b
@@ -306,8 +306,8 @@ pub trait Encode {
 ///         match r.read_u8()? {
 ///             // One good pattern is to avoid using 0 or 1 as a discriminant as these might need
 ///             // to be escaped
-///             2 => Ok(MyEnum::VariantA(Decode::decode(r)?)),
-///             3 => Ok(MyEnum::VariantB(Decode::decode(r)?)),
+///             2 => Ok(MyEnum::VariantA(Decode::<()>::decode(r)?)),
+///             3 => Ok(MyEnum::VariantB(Decode::<()>::decode(r)?)),
 ///             _ => Err(DecodeError::InvalidFormat)
 ///         }
 ///     }
@@ -327,13 +327,13 @@ pub trait Encode {
 ///     fn decode<R: BufRead>(r: &mut Reader<R>) -> Result<Self, DecodeError>{
 ///         let mut res = Vec::new();
 ///         while r.read_terminal()? {
-///             res.push(Decode::decode(r)?);
+///             res.push(Decode::<()>::decode(r)?);
 ///         }
 ///         Ok(MyVec(res))
 ///     }
 /// }
 /// ```
-pub trait Decode: Sized {
+pub trait Decode<Format = ()>: Sized {
 	fn decode<R: BufRead>(r: &mut Reader<R>) -> Result<Self, DecodeError>;
 }
 
@@ -343,7 +343,7 @@ pub trait Decode: Sized {
 /// for zero-copy deserialization. Allowing the deserialization of the escaped variants of [`str`]
 /// [`EscapedStr`] and `[u8]` [`EscapedSlice`] as well as deserializing `Cow<str>` and
 /// `Cow<[u8]>` borrowing directly from the reader if possible.
-pub trait BorrowDecode<'de>: Sized {
+pub trait BorrowDecode<'de, Format = ()>: Sized {
 	fn borrow_decode(r: &mut BorrowReader<'de>) -> Result<Self, DecodeError>;
 }
 
@@ -381,6 +381,54 @@ pub fn decode<R: BufRead, D: Decode>(r: R) -> Result<D, DecodeError> {
 
 /// Decode a decodable type by borrowing from the given slice.
 pub fn decode_borrow<'de, D: BorrowDecode<'de>>(r: &'de [u8]) -> Result<D, DecodeError> {
+	let mut reader = BorrowReader::new(r);
+	let res = D::borrow_decode(&mut reader)?;
+	if !reader.is_empty() {
+		return Err(DecodeError::BytesRemaining);
+	}
+	Ok(res)
+}
+
+/// Encode an encodable type into a type which implements [`std::io::Write`] with a given format
+/// type.
+pub fn encode_format<F, W: Write, E: Encode<F> + ?Sized>(w: W, e: &E) -> Result<(), EncodeError> {
+	let mut writer = Writer::new(w);
+	e.encode(&mut writer)
+}
+
+/// Encode an encodable type into a vector with a given format type.
+///
+/// Writing into a vector cannot cause an IO error and therefore this method returns only custom
+/// errors raised via the [`EncodeError::Custom`] variant.
+pub fn encode_vec_format<F, E: Encode<F> + ?Sized>(
+	e: &E,
+) -> Result<Vec<u8>, Box<dyn Error + Send + Sync>> {
+	let mut buffer = Vec::new();
+	let mut writer = Writer::new(&mut buffer);
+	match e.encode(&mut writer) {
+		Ok(_) => Ok(buffer),
+		// Encoding should only fail on a custom error or an io error, but as this is encoded to vector it should not be
+		// able to fail.
+		Err(EncodeError::Io(_)) => unreachable!(),
+		Err(EncodeError::Custom(x)) => Err(x),
+	}
+}
+
+/// Decode an decodable type from a type which implements [`std::io::BufRead`] with a given format
+/// type.
+pub fn decode_format<F, R: BufRead, D: Decode<F>>(r: R) -> Result<D, DecodeError> {
+	let mut reader = Reader::new(r);
+	let res = D::decode(&mut reader)?;
+	if !reader.is_empty()? {
+		return Err(DecodeError::BytesRemaining);
+	}
+	Ok(res)
+}
+
+/// Decode a decodable type by borrowing from the given slice with a given format type.
+pub fn decode_borrow_format<'de, F, D: BorrowDecode<'de, F>>(
+	r: &'de [u8],
+) -> Result<D, DecodeError> {
 	let mut reader = BorrowReader::new(r);
 	let res = D::borrow_decode(&mut reader)?;
 	if !reader.is_empty() {
