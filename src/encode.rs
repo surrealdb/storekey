@@ -1,17 +1,18 @@
 use std::borrow::Cow;
 use std::collections::{BTreeMap, HashMap};
 use std::io::Write;
+use std::ops::Bound;
 use std::time::Duration;
 
 use super::{Encode, EncodeError, Writer};
 
-impl<E: Encode + ?Sized> Encode for &E {
+impl<F, E: Encode<F> + ?Sized> Encode<F> for &E {
 	fn encode<W: Write>(&self, w: &mut Writer<W>) -> Result<(), EncodeError> {
 		E::encode(self, w)
 	}
 }
 
-impl<E: Encode> Encode for Option<E> {
+impl<F, E: Encode<F>> Encode<F> for Option<E> {
 	fn encode<W: Write>(&self, w: &mut Writer<W>) -> Result<(), EncodeError> {
 		match self.as_ref() {
 			None => w.write_u8(2),
@@ -23,7 +24,23 @@ impl<E: Encode> Encode for Option<E> {
 	}
 }
 
-impl<O: Encode, E: Encode> Encode for Result<O, E> {
+impl<F, E: Encode<F>> Encode<F> for Bound<E> {
+	fn encode<W: Write>(&self, w: &mut Writer<W>) -> Result<(), EncodeError> {
+		match self {
+			Bound::Excluded(v) => {
+				w.write_u8(4)?;
+				Encode::encode(v, w)
+			}
+			Bound::Included(v) => {
+				w.write_u8(3)?;
+				Encode::encode(v, w)
+			}
+			Bound::Unbounded => w.write_u8(2),
+		}
+	}
+}
+
+impl<F, O: Encode<F>, E: Encode<F>> Encode<F> for Result<O, E> {
 	fn encode<W: Write>(&self, w: &mut Writer<W>) -> Result<(), EncodeError> {
 		match self.as_ref() {
 			Ok(x) => {
@@ -38,7 +55,7 @@ impl<O: Encode, E: Encode> Encode for Result<O, E> {
 	}
 }
 
-impl Encode for bool {
+impl<F> Encode<F> for bool {
 	fn encode<W: Write>(&self, w: &mut Writer<W>) -> Result<(), EncodeError> {
 		if *self {
 			w.write_u8(3)
@@ -48,32 +65,32 @@ impl Encode for bool {
 	}
 }
 
-impl Encode for char {
+impl<F> Encode<F> for char {
 	fn encode<W: Write>(&self, w: &mut Writer<W>) -> Result<(), EncodeError> {
 		w.write_u32(*self as u32)
 	}
 }
 
-impl Encode for str {
+impl<F> Encode<F> for str {
 	fn encode<W: Write>(&self, w: &mut Writer<W>) -> Result<(), EncodeError> {
 		w.write_slice(self.as_bytes())
 	}
 }
 
-impl Encode for String {
+impl<F> Encode<F> for String {
 	fn encode<W: Write>(&self, w: &mut Writer<W>) -> Result<(), EncodeError> {
 		w.write_slice(self.as_bytes())
 	}
 }
 
-impl Encode for Duration {
+impl<F> Encode<F> for Duration {
 	fn encode<W: Write>(&self, w: &mut Writer<W>) -> Result<(), EncodeError> {
 		w.write_u64(self.as_secs())?;
 		w.write_u32(self.subsec_nanos())
 	}
 }
 
-impl<E: Encode> Encode for [E] {
+impl<F, E: Encode<F>> Encode<F> for [E] {
 	fn encode<W: Write>(&self, w: &mut Writer<W>) -> Result<(), EncodeError> {
 		for e in self.iter() {
 			w.mark_terminator();
@@ -83,7 +100,7 @@ impl<E: Encode> Encode for [E] {
 	}
 }
 
-impl<E: Encode> Encode for Vec<E> {
+impl<F, E: Encode<F>> Encode<F> for Vec<E> {
 	fn encode<W: Write>(&self, w: &mut Writer<W>) -> Result<(), EncodeError> {
 		for e in self.iter() {
 			w.mark_terminator();
@@ -93,19 +110,19 @@ impl<E: Encode> Encode for Vec<E> {
 	}
 }
 
-impl<E: Encode> Encode for Box<E> {
+impl<F, E: Encode<F>> Encode<F> for Box<E> {
 	fn encode<W: Write>(&self, w: &mut Writer<W>) -> Result<(), EncodeError> {
 		self.as_ref().encode(w)
 	}
 }
 
-impl<E: Encode + ToOwned + ?Sized> Encode for Cow<'_, E> {
+impl<F, E: Encode<F> + ToOwned + ?Sized> Encode<F> for Cow<'_, E> {
 	fn encode<W: Write>(&self, w: &mut Writer<W>) -> Result<(), EncodeError> {
 		self.as_ref().encode(w)
 	}
 }
 
-impl<K: Encode, V: Encode, S> Encode for HashMap<K, V, S> {
+impl<F, K: Encode<F>, V: Encode<F>, S> Encode<F> for HashMap<K, V, S> {
 	fn encode<W: Write>(&self, w: &mut Writer<W>) -> Result<(), EncodeError> {
 		for (k, v) in self.iter() {
 			w.mark_terminator();
@@ -116,7 +133,7 @@ impl<K: Encode, V: Encode, S> Encode for HashMap<K, V, S> {
 	}
 }
 
-impl<K: Encode, V: Encode> Encode for BTreeMap<K, V> {
+impl<F, K: Encode<F>, V: Encode<F>> Encode<F> for BTreeMap<K, V> {
 	fn encode<W: Write>(&self, w: &mut Writer<W>) -> Result<(), EncodeError> {
 		for (k, v) in self.iter() {
 			w.mark_terminator();
@@ -127,7 +144,7 @@ impl<K: Encode, V: Encode> Encode for BTreeMap<K, V> {
 	}
 }
 
-impl<T: Encode, const SIZE: usize> Encode for [T; SIZE] {
+impl<F, T: Encode<F>, const SIZE: usize> Encode<F> for [T; SIZE] {
 	fn encode<W: Write>(&self, w: &mut Writer<W>) -> Result<(), EncodeError> {
 		for i in self.iter() {
 			i.encode(w)?;
@@ -138,7 +155,7 @@ impl<T: Encode, const SIZE: usize> Encode for [T; SIZE] {
 
 macro_rules! impl_encode_tuple{
     ($($t:ident),*$(,)?) => {
-		impl <$($t: Encode),*> Encode for ($($t,)*){
+		impl <Format,$($t: Encode<Format>),*> Encode<Format> for ($($t,)*){
 			#[allow(non_snake_case)]
 			fn encode<W: Write>(&self, _w: &mut Writer<W>) -> Result<(),EncodeError> {
 				let ($($t,)*) = self;
@@ -163,7 +180,7 @@ impl_encode_tuple!(A, B, C, D, E, F);
 
 macro_rules! impl_encode_prim {
 	($ty:ident,$name:ident) => {
-		impl Encode for $ty {
+		impl<F> Encode<F> for $ty {
 			fn encode<W: Write>(&self, w: &mut Writer<W>) -> Result<(), EncodeError> {
 				w.$name(*self)
 			}

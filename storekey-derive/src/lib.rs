@@ -2,7 +2,7 @@ use proc_macro::TokenStream;
 
 mod impls;
 
-#[proc_macro_derive(Encode)]
+#[proc_macro_derive(Encode, attributes(storekey))]
 pub fn encode(input: TokenStream) -> TokenStream {
 	match impls::encode(input.into()) {
 		Ok(x) => x.into(),
@@ -10,7 +10,7 @@ pub fn encode(input: TokenStream) -> TokenStream {
 	}
 }
 
-#[proc_macro_derive(Decode)]
+#[proc_macro_derive(Decode, attributes(storekey))]
 pub fn decode(input: TokenStream) -> TokenStream {
 	match impls::decode(input.into()) {
 		Ok(x) => x.into(),
@@ -18,7 +18,7 @@ pub fn decode(input: TokenStream) -> TokenStream {
 	}
 }
 
-#[proc_macro_derive(BorrowDecode)]
+#[proc_macro_derive(BorrowDecode, attributes(storekey))]
 pub fn borrow_decode(input: TokenStream) -> TokenStream {
 	match impls::borrow_decode(input.into()) {
 		Ok(x) => x.into(),
