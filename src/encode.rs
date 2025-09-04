@@ -1,6 +1,7 @@
 use std::borrow::Cow;
 use std::collections::{BTreeMap, HashMap};
 use std::io::Write;
+use std::ops::Bound;
 use std::time::Duration;
 
 use super::{Encode, EncodeError, Writer};
@@ -19,6 +20,22 @@ impl<F, E: Encode<F>> Encode<F> for Option<E> {
 				w.write_u8(3)?;
 				E::encode(x, w)
 			}
+		}
+	}
+}
+
+impl<F, E: Encode<F>> Encode<F> for Bound<E> {
+	fn encode<W: Write>(&self, w: &mut Writer<W>) -> Result<(), EncodeError> {
+		match self {
+			Bound::Excluded(v) => {
+				w.write_u8(4)?;
+				Encode::encode(v, w)
+			}
+			Bound::Included(v) => {
+				w.write_u8(3)?;
+				Encode::encode(v, w)
+			}
+			Bound::Unbounded => w.write_u8(2),
 		}
 	}
 }

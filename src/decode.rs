@@ -3,6 +3,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::hash::{BuildHasher, Hash};
 use std::io::BufRead;
 use std::mem::MaybeUninit;
+use std::ops::Bound;
 use std::time::Duration;
 
 use crate::DecodeError;
@@ -40,6 +41,17 @@ impl<F, D: Decode<F>> Decode<F> for Option<D> {
 			// Todo: Maybe keep it backwards compatible.
 			2 => Ok(None),
 			3 => Ok(Some(Decode::decode(r)?)),
+			_ => Err(DecodeError::InvalidFormat),
+		}
+	}
+}
+
+impl<F, D: Decode<F>> Decode<F> for Bound<D> {
+	fn decode<R: BufRead>(r: &mut Reader<R>) -> Result<Self, DecodeError> {
+		match r.read_u8()? {
+			2 => Ok(Bound::Unbounded),
+			3 => Ok(Bound::Included(Decode::<F>::decode(r)?)),
+			4 => Ok(Bound::Excluded(Decode::<F>::decode(r)?)),
 			_ => Err(DecodeError::InvalidFormat),
 		}
 	}
@@ -228,6 +240,17 @@ impl<'de, F, D: BorrowDecode<'de, F>> BorrowDecode<'de, F> for Option<D> {
 		match r.read_u8()? {
 			2 => Ok(None),
 			3 => Ok(Some(D::borrow_decode(r)?)),
+			_ => Err(DecodeError::InvalidFormat),
+		}
+	}
+}
+
+impl<'de, F, D: BorrowDecode<'de, F>> BorrowDecode<'de, F> for Bound<D> {
+	fn borrow_decode(r: &mut BorrowReader<'de>) -> Result<Self, DecodeError> {
+		match r.read_u8()? {
+			2 => Ok(Bound::Unbounded),
+			3 => Ok(Bound::Included(BorrowDecode::<'de, F>::borrow_decode(r)?)),
+			4 => Ok(Bound::Excluded(BorrowDecode::<'de, F>::borrow_decode(r)?)),
 			_ => Err(DecodeError::InvalidFormat),
 		}
 	}
