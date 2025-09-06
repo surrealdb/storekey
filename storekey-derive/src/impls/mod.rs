@@ -1,8 +1,8 @@
-use proc_macro2::TokenStream;
+use proc_macro2::{Literal, Span, TokenStream};
 use quote::{ToTokens, format_ident, quote};
 use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
-use syn::{DeriveInput, Generics, Result, Token, TypeParamBound, parse2};
+use syn::{DeriveInput, Generics, Ident, Result, Token, TypeParamBound, parse2};
 
 fn build_generics_types(bound: TypeParamBound, generics: &Generics) -> TokenStream {
 	let mut types = Punctuated::<_, Token![,]>::new();
@@ -45,11 +45,29 @@ pub fn encode(input: TokenStream) -> Result<TokenStream> {
 
 			let mut variants = Vec::new();
 
+			let decode_type = if data_enum.variants.len() > (u8::MAX as usize) - 2 {
+				if data_enum.variants.len() > u16::MAX as usize {
+					Ident::new("u32", Span::call_site())
+				} else {
+					Ident::new("u16", Span::call_site())
+				}
+			} else {
+				Ident::new("u8", Span::call_site())
+			};
+
 			for (idx, v) in data_enum.variants.iter().enumerate() {
 				let name = &v.ident;
-				let idx = idx
-					.checked_add(2)
-					.ok_or(syn::Error::new_spanned(v, "Too many enum variants"))? as u32;
+
+				let idx = if data_enum.variants.len() > (u8::MAX as usize) - 2 {
+					if data_enum.variants.len() > u16::MAX as usize {
+						Literal::u32_suffixed(idx as u32)
+					} else {
+						Literal::u16_suffixed(idx as u16)
+					}
+				} else {
+					Literal::u8_suffixed((idx as u8) + 2)
+				};
+
 				match &v.fields {
 					syn::Fields::Named(_) => {
 						let members = v.fields.members();
@@ -59,7 +77,7 @@ pub fn encode(input: TokenStream) -> Result<TokenStream> {
 							Self::#name{
 								#(#members),*
 							} => {
-								let discriminant: u32 = #idx;
+								let discriminant: #decode_type = #idx;
 								::storekey::Encode::encode(&discriminant,_w)?;
 								#(::storekey::Encode::encode(&#members_b,_w)?;)*
 							}
@@ -77,7 +95,7 @@ pub fn encode(input: TokenStream) -> Result<TokenStream> {
 							Self::#name(
 								#(#fields),*
 							) => {
-								let discriminant: u32 = #idx;
+								let discriminant: #decode_type = #idx;
 								::storekey::Encode::encode(&discriminant,_w)?;
 								#(::storekey::Encode::encode(&#fields,_w)?;)*
 							}
@@ -85,7 +103,7 @@ pub fn encode(input: TokenStream) -> Result<TokenStream> {
 					}
 					syn::Fields::Unit => variants.push(quote! {
 						Self::#name => {
-							let discriminant: u32 = #idx;
+							let discriminant: #decode_type = #idx;
 							::storekey::Encode::encode(&discriminant,_w)?;
 						}
 					}),
@@ -146,11 +164,29 @@ pub fn decode(input: TokenStream) -> Result<TokenStream> {
 
 			let mut variants = Vec::new();
 
+			let decode_type = if data_enum.variants.len() > (u8::MAX as usize) - 2 {
+				if data_enum.variants.len() > u16::MAX as usize {
+					Ident::new("u32", Span::call_site())
+				} else {
+					Ident::new("u16", Span::call_site())
+				}
+			} else {
+				Ident::new("u8", Span::call_site())
+			};
+
 			for (idx, v) in data_enum.variants.iter().enumerate() {
 				let name = &v.ident;
-				let idx = idx
-					.checked_add(2)
-					.ok_or(syn::Error::new_spanned(v, "Too many enum variants"))? as u32;
+
+				let idx = if data_enum.variants.len() > (u8::MAX as usize) - 2 {
+					if data_enum.variants.len() > u16::MAX as usize {
+						Literal::u32_suffixed(idx as u32)
+					} else {
+						Literal::u16_suffixed(idx as u16)
+					}
+				} else {
+					Literal::u8_suffixed((idx as u8) + 2)
+				};
+
 				let bind_fields = match &v.fields {
 					syn::Fields::Named(_) => {
 						let members = v.fields.members();
@@ -185,7 +221,7 @@ pub fn decode(input: TokenStream) -> Result<TokenStream> {
 			}
 
 			quote! {
-				let variant: u32 = ::storekey::Decode::decode(_r)?;
+				let variant: #decode_type = ::storekey::Decode::decode(_r)?;
 				match variant {
 					#(#variants,)*
 					_ => Err(::storekey::DecodeError::InvalidFormat)
@@ -253,11 +289,29 @@ pub fn borrow_decode(input: TokenStream) -> Result<TokenStream> {
 
 			let mut variants = Vec::new();
 
+			let decode_type = if data_enum.variants.len() > (u8::MAX as usize) - 2 {
+				if data_enum.variants.len() > u16::MAX as usize {
+					Ident::new("u32", Span::call_site())
+				} else {
+					Ident::new("u16", Span::call_site())
+				}
+			} else {
+				Ident::new("u8", Span::call_site())
+			};
+
 			for (idx, v) in data_enum.variants.iter().enumerate() {
 				let name = &v.ident;
-				let idx = idx
-					.checked_add(2)
-					.ok_or(syn::Error::new_spanned(v, "Too many enum variants"))? as u32;
+
+				let idx = if data_enum.variants.len() > (u8::MAX as usize) - 2 {
+					if data_enum.variants.len() > u16::MAX as usize {
+						Literal::u32_suffixed(idx as u32)
+					} else {
+						Literal::u16_suffixed(idx as u16)
+					}
+				} else {
+					Literal::u8_suffixed((idx as u8) + 2)
+				};
+
 				let bind_fields = match &v.fields {
 					syn::Fields::Named(_) => {
 						let members = v.fields.members();
@@ -292,7 +346,7 @@ pub fn borrow_decode(input: TokenStream) -> Result<TokenStream> {
 			}
 
 			quote! {
-				let variant: u32 = ::storekey::BorrowDecode::borrow_decode(_r)?;
+				let variant: #decode_type = ::storekey::BorrowDecode::borrow_decode(_r)?;
 				match variant {
 					#(#variants,)*
 					_ => Err(::storekey::DecodeError::InvalidFormat)

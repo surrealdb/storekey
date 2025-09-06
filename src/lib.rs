@@ -17,10 +17,17 @@
 //! In general, the exact type of a serialized value must be known in order to correctly
 //! deserialize it. For structs and enums, the type is effectively frozen once any values of the
 //! type have been serialized: changes to the struct or enum will cause deserialization of already
-//! serialized values to fail or return incorrect values. The only exception is adding new variants
-//! to the end of an existing enum. Enum variants may *not* change type, be removed, or be
-//! reordered. All changes to structs, including adding, removing, reordering, or changing the type
-//! of a field are forbidden.
+//! serialized values to fail or return incorrect values.
+//!
+//! The only **limited** exception is adding new variants to the end of an existing enum.
+//! Enum variants may *not* change type, be removed, or be reordered. All changes to structs,
+//! including adding, removing, reordering, or changing the type of a field are forbidden.
+//!
+//! Adding a new variant to an proc-macro derived encoded enum will not break serialization as long
+//! as the amount of variants does not overflow the current descriminator length. In this case
+//! adding a new variant after having 254 (u8::MAX - 2) variants is breaking so is adding one after
+//! already having u16::MAX variants.
+//!
 //!
 //! These restrictions lead to a few best-practices when using `storekey` serialization:
 //!
