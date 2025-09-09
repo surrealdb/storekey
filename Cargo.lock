@@ -70,7 +70,7 @@ dependencies = [
 
 [[package]]
 name = "storekey-derive"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "proc-macro2",
  "quote",

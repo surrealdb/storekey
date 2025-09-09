@@ -24,5 +24,5 @@ derive = ["storekey-derive"]
 uuid = ["dep:uuid"]
 
 [dependencies]
-storekey-derive = { version = "0.7.0", path = "storekey-derive", optional = true }
+storekey-derive = { version = "0.8.0", path = "storekey-derive", optional = true }
 uuid = { version = "1.17", optional = true }
