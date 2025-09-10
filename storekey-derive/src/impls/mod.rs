@@ -1,4 +1,4 @@
-use proc_macro2::{Literal, Span, TokenStream};
+use proc_macro2::TokenStream;
 use quote::{ToTokens, format_ident, quote};
 use syn::parse::Parse;
 use syn::punctuated::Punctuated;
