@@ -2,7 +2,7 @@
 name = "storekey-derive"
 publish = true
 edition = "2024"
-version = "0.8.0"
+version = "0.8.1"
 description = "Private implementation of procedural macros for storekey"
 repository = "https://github.com/surrealdb/storekey"
 homepage = "https://github.com/surrealdb/storekey"
