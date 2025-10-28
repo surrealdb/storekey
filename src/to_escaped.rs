@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet};
 
 use super::types::{EscapedSlice, EscapedStr};
 
@@ -14,12 +14,12 @@ impl<T: ToEscaped> ToEscaped for Vec<T> {
 	type Escaped<'e> = Vec<T::Escaped<'e>>;
 }
 
-impl<K: ToEscaped, V: ToEscaped, S> ToEscaped for HashMap<K, V, S> {
-	type Escaped<'e> = HashMap<K::Escaped<'e>, V::Escaped<'e>>;
-}
-
 impl<K: ToEscaped, V: ToEscaped> ToEscaped for BTreeMap<K, V> {
 	type Escaped<'e> = BTreeMap<K::Escaped<'e>, V::Escaped<'e>>;
+}
+
+impl<T: ToEscaped> ToEscaped for BTreeSet<T> {
+	type Escaped<'e> = BTreeSet<T::Escaped<'e>>;
 }
 
 impl ToEscaped for &str {

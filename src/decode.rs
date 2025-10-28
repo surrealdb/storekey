@@ -1,6 +1,5 @@
 use std::borrow::Cow;
-use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
-use std::hash::{BuildHasher, Hash};
+use std::collections::{BTreeMap, BTreeSet};
 use std::io::BufRead;
 use std::mem::MaybeUninit;
 use std::ops::Bound;
@@ -97,22 +96,6 @@ impl<F, D: Decode<F>> Decode<F> for Box<D> {
 	}
 }
 
-impl<F, K: Decode<F> + Hash + Eq, V: Decode<F>, S: BuildHasher + Default> Decode<F>
-	for HashMap<K, V, S>
-{
-	fn decode<R: BufRead>(r: &mut Reader<R>) -> Result<Self, DecodeError> {
-		let mut res = HashMap::default();
-
-		while !r.read_terminal()? {
-			let k = K::decode(r)?;
-			let v = V::decode(r)?;
-			res.insert(k, v);
-		}
-
-		Ok(res)
-	}
-}
-
 impl<F, K: Decode<F> + Ord, V: Decode<F>> Decode<F> for BTreeMap<K, V> {
 	fn decode<R: BufRead>(r: &mut Reader<R>) -> Result<Self, DecodeError> {
 		let mut res = BTreeMap::default();
@@ -121,19 +104,6 @@ impl<F, K: Decode<F> + Ord, V: Decode<F>> Decode<F> for BTreeMap<K, V> {
 			let k = K::decode(r)?;
 			let v = V::decode(r)?;
 			res.insert(k, v);
-		}
-
-		Ok(res)
-	}
-}
-
-impl<F, T: Decode<F> + Hash + Eq, S: BuildHasher + Default> Decode<F> for HashSet<T, S> {
-	fn decode<R: BufRead>(r: &mut Reader<R>) -> Result<Self, DecodeError> {
-		let mut res = HashSet::default();
-
-		while !r.read_terminal()? {
-			let item = T::decode(r)?;
-			res.insert(item);
 		}
 
 		Ok(res)
@@ -344,27 +314,6 @@ impl<'de, F, D: BorrowDecode<'de, F>> BorrowDecode<'de, F> for Vec<D> {
 	}
 }
 
-impl<
-		'de,
-		F,
-		K: BorrowDecode<'de, F> + Hash + Eq,
-		V: BorrowDecode<'de, F>,
-		S: BuildHasher + Default,
-	> BorrowDecode<'de, F> for HashMap<K, V, S>
-{
-	fn borrow_decode(r: &mut BorrowReader<'de>) -> Result<Self, DecodeError> {
-		let mut res = HashMap::default();
-
-		while !r.read_terminal()? {
-			let k = K::borrow_decode(r)?;
-			let v = V::borrow_decode(r)?;
-			res.insert(k, v);
-		}
-
-		Ok(res)
-	}
-}
-
 impl<'de, F, K: BorrowDecode<'de, F> + Ord, V: BorrowDecode<'de, F>> BorrowDecode<'de, F>
 	for BTreeMap<K, V>
 {
@@ -375,21 +324,6 @@ impl<'de, F, K: BorrowDecode<'de, F> + Ord, V: BorrowDecode<'de, F>> BorrowDecod
 			let k = K::borrow_decode(r)?;
 			let v = V::borrow_decode(r)?;
 			res.insert(k, v);
-		}
-
-		Ok(res)
-	}
-}
-
-impl<'de, F, T: BorrowDecode<'de, F> + Hash + Eq, S: BuildHasher + Default> BorrowDecode<'de, F>
-	for HashSet<T, S>
-{
-	fn borrow_decode(r: &mut BorrowReader<'de>) -> Result<Self, DecodeError> {
-		let mut res = HashSet::default();
-
-		while !r.read_terminal()? {
-			let item = T::borrow_decode(r)?;
-			res.insert(item);
 		}
 
 		Ok(res)

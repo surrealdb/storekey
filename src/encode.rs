@@ -1,5 +1,5 @@
 use std::borrow::Cow;
-use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet};
 use std::io::Write;
 use std::ops::Bound;
 use std::time::Duration;
@@ -122,33 +122,12 @@ impl<F, E: Encode<F> + ToOwned + ?Sized> Encode<F> for Cow<'_, E> {
 	}
 }
 
-impl<F, K: Encode<F>, V: Encode<F>, S> Encode<F> for HashMap<K, V, S> {
-	fn encode<W: Write>(&self, w: &mut Writer<W>) -> Result<(), EncodeError> {
-		for (k, v) in self.iter() {
-			w.mark_terminator();
-			k.encode(w)?;
-			v.encode(w)?;
-		}
-		w.write_terminator()
-	}
-}
-
 impl<F, K: Encode<F>, V: Encode<F>> Encode<F> for BTreeMap<K, V> {
 	fn encode<W: Write>(&self, w: &mut Writer<W>) -> Result<(), EncodeError> {
 		for (k, v) in self.iter() {
 			w.mark_terminator();
 			k.encode(w)?;
 			v.encode(w)?;
-		}
-		w.write_terminator()
-	}
-}
-
-impl<F, T: Encode<F>, S> Encode<F> for HashSet<T, S> {
-	fn encode<W: Write>(&self, w: &mut Writer<W>) -> Result<(), EncodeError> {
-		for item in self.iter() {
-			w.mark_terminator();
-			item.encode(w)?;
 		}
 		w.write_terminator()
 	}
