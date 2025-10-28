@@ -1,5 +1,5 @@
 use std::borrow::Cow;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet};
 use std::io::Write;
 use std::ops::Bound;
 use std::time::Duration;
@@ -122,7 +122,7 @@ impl<F, E: Encode<F> + ToOwned + ?Sized> Encode<F> for Cow<'_, E> {
 	}
 }
 
-impl<F, K: Encode<F>, V: Encode<F>, S> Encode<F> for HashMap<K, V, S> {
+impl<F, K: Encode<F>, V: Encode<F>> Encode<F> for BTreeMap<K, V> {
 	fn encode<W: Write>(&self, w: &mut Writer<W>) -> Result<(), EncodeError> {
 		for (k, v) in self.iter() {
 			w.mark_terminator();
@@ -133,12 +133,11 @@ impl<F, K: Encode<F>, V: Encode<F>, S> Encode<F> for HashMap<K, V, S> {
 	}
 }
 
-impl<F, K: Encode<F>, V: Encode<F>> Encode<F> for BTreeMap<K, V> {
+impl<F, T: Encode<F>> Encode<F> for BTreeSet<T> {
 	fn encode<W: Write>(&self, w: &mut Writer<W>) -> Result<(), EncodeError> {
-		for (k, v) in self.iter() {
+		for item in self.iter() {
 			w.mark_terminator();
-			k.encode(w)?;
-			v.encode(w)?;
+			item.encode(w)?;
 		}
 		w.write_terminator()
 	}

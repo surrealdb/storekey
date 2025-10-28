@@ -1,15 +1,13 @@
 use std::borrow::Cow;
-use std::collections::{BTreeMap, HashMap};
-use std::hash::{BuildHasher, Hash};
+use std::collections::{BTreeMap, BTreeSet};
 use std::io::BufRead;
 use std::mem::MaybeUninit;
 use std::ops::Bound;
 use std::time::Duration;
 
-use crate::DecodeError;
-
 use super::reader::BorrowReader;
 use super::{BorrowDecode, Decode, Reader};
+use crate::DecodeError;
 
 impl<F> Decode<F> for bool {
 	fn decode<R: BufRead>(r: &mut Reader<R>) -> Result<Self, DecodeError> {
@@ -98,11 +96,9 @@ impl<F, D: Decode<F>> Decode<F> for Box<D> {
 	}
 }
 
-impl<F, K: Decode<F> + Hash + Eq, V: Decode<F>, S: BuildHasher + Default> Decode<F>
-	for HashMap<K, V, S>
-{
+impl<F, K: Decode<F> + Ord, V: Decode<F>> Decode<F> for BTreeMap<K, V> {
 	fn decode<R: BufRead>(r: &mut Reader<R>) -> Result<Self, DecodeError> {
-		let mut res = HashMap::default();
+		let mut res = BTreeMap::default();
 
 		while !r.read_terminal()? {
 			let k = K::decode(r)?;
@@ -114,14 +110,13 @@ impl<F, K: Decode<F> + Hash + Eq, V: Decode<F>, S: BuildHasher + Default> Decode
 	}
 }
 
-impl<F, K: Decode<F> + Ord, V: Decode<F>> Decode<F> for BTreeMap<K, V> {
+impl<F, T: Decode<F> + Ord> Decode<F> for BTreeSet<T> {
 	fn decode<R: BufRead>(r: &mut Reader<R>) -> Result<Self, DecodeError> {
-		let mut res = BTreeMap::default();
+		let mut res = BTreeSet::default();
 
 		while !r.read_terminal()? {
-			let k = K::decode(r)?;
-			let v = V::decode(r)?;
-			res.insert(k, v);
+			let item = T::decode(r)?;
+			res.insert(item);
 		}
 
 		Ok(res)
@@ -319,16 +314,11 @@ impl<'de, F, D: BorrowDecode<'de, F>> BorrowDecode<'de, F> for Vec<D> {
 	}
 }
 
-impl<
-		'de,
-		F,
-		K: BorrowDecode<'de, F> + Hash + Eq,
-		V: BorrowDecode<'de, F>,
-		S: BuildHasher + Default,
-	> BorrowDecode<'de, F> for HashMap<K, V, S>
+impl<'de, F, K: BorrowDecode<'de, F> + Ord, V: BorrowDecode<'de, F>> BorrowDecode<'de, F>
+	for BTreeMap<K, V>
 {
 	fn borrow_decode(r: &mut BorrowReader<'de>) -> Result<Self, DecodeError> {
-		let mut res = HashMap::default();
+		let mut res = BTreeMap::default();
 
 		while !r.read_terminal()? {
 			let k = K::borrow_decode(r)?;
@@ -340,16 +330,13 @@ impl<
 	}
 }
 
-impl<'de, F, K: BorrowDecode<'de, F> + Ord, V: BorrowDecode<'de, F>> BorrowDecode<'de, F>
-	for BTreeMap<K, V>
-{
+impl<'de, F, T: BorrowDecode<'de, F> + Ord> BorrowDecode<'de, F> for BTreeSet<T> {
 	fn borrow_decode(r: &mut BorrowReader<'de>) -> Result<Self, DecodeError> {
-		let mut res = BTreeMap::default();
+		let mut res = BTreeSet::default();
 
 		while !r.read_terminal()? {
-			let k = K::borrow_decode(r)?;
-			let v = V::borrow_decode(r)?;
-			res.insert(k, v);
+			let item = T::borrow_decode(r)?;
+			res.insert(item);
 		}
 
 		Ok(res)

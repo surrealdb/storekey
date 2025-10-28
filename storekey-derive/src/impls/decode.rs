@@ -1,6 +1,7 @@
 use proc_macro2::{Literal, Span, TokenStream};
 use quote::quote;
-use syn::{DeriveInput, Ident, Result, parse2, spanned::Spanned};
+use syn::spanned::Spanned;
+use syn::{DeriveInput, Ident, Result, parse2};
 
 use crate::impls::{build_generics_types, extract_formats};
 

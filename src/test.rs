@@ -1,7 +1,6 @@
 use std::borrow::Cow;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Debug;
-use std::hash::Hash;
 
 use crate::{decode, decode_borrow, encode_vec, BorrowDecode, Decode, Encode};
 
@@ -105,42 +104,6 @@ fn vec() {
 }
 
 #[test]
-fn hashmap() {
-	fn test_hashmap<K, V, const S: usize>(map: [(K, V); S])
-	where
-		K: Decode + Encode + for<'a> BorrowDecode<'a> + Debug + PartialEq + Hash + Eq,
-		V: Decode + Encode + for<'a> BorrowDecode<'a> + Debug + PartialEq,
-	{
-		let map: HashMap<K, V> = map.into_iter().collect();
-
-		let enc = dbg!(encode_vec(&map).unwrap());
-		let dec: HashMap<K, V> = decode(enc.as_slice()).unwrap();
-		assert_eq!(map.len(), dec.len());
-		for (k, v) in map.iter() {
-			assert_eq!(dec.get(k).unwrap(), v, "Value for key {:?} was not correct", k);
-		}
-
-		let dec: HashMap<K, V> = decode_borrow(enc.as_slice()).unwrap();
-		assert_eq!(map.len(), dec.len());
-		for (k, v) in map.iter() {
-			assert_eq!(dec.get(k).unwrap(), v, "Value for key {:?} was not correct", k);
-		}
-	}
-
-	test_hashmap::<u8, u8, 0>([]);
-	test_hashmap([(0u8, 0u8), (1u8, 1u8)]);
-	test_hashmap([
-		("hello world".to_string(), 0u8),
-		("\x00world".to_string(), 1u8),
-		("\x01world".to_string(), 2u8),
-		("\x00".to_string(), 3u8),
-		("\x01".to_string(), 4u8),
-		("\x00\x01".to_string(), 0u8),
-	]);
-	test_hashmap([(vec![0, 0, 0], vec![0, 0, 0]), (vec![1, 1, 1], vec![0, 0, 0])]);
-}
-
-#[test]
 fn btree() {
 	fn test_btree<K, V, const S: usize>(map: [(K, V); S])
 	where
@@ -174,6 +137,41 @@ fn btree() {
 		("\x00\x01".to_string(), 0u8),
 	]);
 	test_btree([(vec![0, 0, 0], vec![0, 0, 0]), (vec![1, 1, 1], vec![0, 0, 0])]);
+}
+
+#[test]
+fn btreeset() {
+	fn test_btreeset<T, const S: usize>(set: [T; S])
+	where
+		T: Decode + Encode + for<'a> BorrowDecode<'a> + Debug + PartialEq + Ord,
+	{
+		let set: BTreeSet<T> = set.into_iter().collect();
+
+		let enc = dbg!(encode_vec(&set).unwrap());
+		let dec: BTreeSet<T> = decode(enc.as_slice()).unwrap();
+		assert_eq!(set.len(), dec.len());
+		for item in set.iter() {
+			assert!(dec.contains(item), "Set should contain {:?}", item);
+		}
+
+		let dec: BTreeSet<T> = decode_borrow(enc.as_slice()).unwrap();
+		assert_eq!(set.len(), dec.len());
+		for item in set.iter() {
+			assert!(dec.contains(item), "Set should contain {:?}", item);
+		}
+	}
+
+	test_btreeset::<u8, 0>([]);
+	test_btreeset([0u8, 1u8, 2u8]);
+	test_btreeset([
+		"hello world".to_string(),
+		"\x00world".to_string(),
+		"\x01world".to_string(),
+		"\x00".to_string(),
+		"\x01".to_string(),
+		"\x00\x01".to_string(),
+	]);
+	test_btreeset([vec![0, 0, 0], vec![1, 1, 1], vec![2, 2, 2]]);
 }
 
 #[test]

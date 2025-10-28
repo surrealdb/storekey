@@ -1,4 +1,5 @@
-use std::{borrow::Cow, fmt::Debug};
+use std::borrow::Cow;
+use std::fmt::Debug;
 
 use storekey::{
 	decode, decode_borrow, encode_vec, encode_vec_format, BorrowDecode, Decode, Encode, EscapedStr,
