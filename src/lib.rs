@@ -1,6 +1,6 @@
-//! Binary serialization library for Rust values which preserves lexicographic sort order. Order-preserving
-//! encoding is useful for creating keys for sorted key-value stores with byte string typed keys,
-//! such as [leveldb](https://github.com/google/leveldb) and
+//! Binary serialization library for Rust values which preserves lexicographic sort order.
+//! Order-preserving encoding is useful for creating keys for sorted key-value stores with byte
+//! string typed keys, such as [leveldb](https://github.com/google/leveldb) and
 //! [sled](https://github.com/spacejam/sled).
 //!
 //! `storekey` is *not* a self-describing format. In other words, Type information is *not*
@@ -35,7 +35,6 @@
 //!   general encoding library such as [Cap'n Proto](https://github.com/dwrensha/capnproto-rust) or
 //!   [bincode](https://github.com/TyOverby/binary-encode) will serve you better if this feature is
 //!   not necessary.
-//!
 use std::error::Error;
 use std::fmt;
 use std::io::{self, BufRead, Write};
@@ -262,7 +261,6 @@ impl From<io::Error> for DecodeError {
 ///     }
 /// }
 /// ```
-///
 pub trait Encode<Format = ()> {
 	fn encode<W: Write>(&self, w: &mut Writer<W>) -> Result<(), EncodeError>;
 }
@@ -362,8 +360,8 @@ pub fn encode_vec<E: Encode + ?Sized>(e: &E) -> Result<Vec<u8>, Box<dyn Error + 
 	let mut writer = Writer::new(&mut buffer);
 	match e.encode(&mut writer) {
 		Ok(_) => Ok(buffer),
-		// Encoding should only fail on a custom error or an io error, but as this is encoded to vector it should not be
-		// able to fail.
+		// Encoding should only fail on a custom error or an io error, but as this is encoded to
+		// vector it should not be able to fail.
 		Err(EncodeError::Io(_)) => unreachable!(),
 		Err(EncodeError::Custom(x)) => Err(x),
 	}
@@ -407,8 +405,8 @@ pub fn encode_vec_format<F, E: Encode<F> + ?Sized>(
 	let mut writer = Writer::new(&mut buffer);
 	match e.encode(&mut writer) {
 		Ok(_) => Ok(buffer),
-		// Encoding should only fail on a custom error or an io error, but as this is encoded to vector it should not be
-		// able to fail.
+		// Encoding should only fail on a custom error or an io error, but as this is encoded to
+		// vector it should not be able to fail.
 		Err(EncodeError::Io(_)) => unreachable!(),
 		Err(EncodeError::Custom(x)) => Err(x),
 	}

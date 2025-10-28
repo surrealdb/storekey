@@ -1,15 +1,14 @@
 use std::borrow::Cow;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::hash::{BuildHasher, Hash};
 use std::io::BufRead;
 use std::mem::MaybeUninit;
 use std::ops::Bound;
 use std::time::Duration;
 
-use crate::DecodeError;
-
 use super::reader::BorrowReader;
 use super::{BorrowDecode, Decode, Reader};
+use crate::DecodeError;
 
 impl<F> Decode<F> for bool {
 	fn decode<R: BufRead>(r: &mut Reader<R>) -> Result<Self, DecodeError> {
@@ -122,6 +121,32 @@ impl<F, K: Decode<F> + Ord, V: Decode<F>> Decode<F> for BTreeMap<K, V> {
 			let k = K::decode(r)?;
 			let v = V::decode(r)?;
 			res.insert(k, v);
+		}
+
+		Ok(res)
+	}
+}
+
+impl<F, T: Decode<F> + Hash + Eq, S: BuildHasher + Default> Decode<F> for HashSet<T, S> {
+	fn decode<R: BufRead>(r: &mut Reader<R>) -> Result<Self, DecodeError> {
+		let mut res = HashSet::default();
+
+		while !r.read_terminal()? {
+			let item = T::decode(r)?;
+			res.insert(item);
+		}
+
+		Ok(res)
+	}
+}
+
+impl<F, T: Decode<F> + Ord> Decode<F> for BTreeSet<T> {
+	fn decode<R: BufRead>(r: &mut Reader<R>) -> Result<Self, DecodeError> {
+		let mut res = BTreeSet::default();
+
+		while !r.read_terminal()? {
+			let item = T::decode(r)?;
+			res.insert(item);
 		}
 
 		Ok(res)
@@ -350,6 +375,34 @@ impl<'de, F, K: BorrowDecode<'de, F> + Ord, V: BorrowDecode<'de, F>> BorrowDecod
 			let k = K::borrow_decode(r)?;
 			let v = V::borrow_decode(r)?;
 			res.insert(k, v);
+		}
+
+		Ok(res)
+	}
+}
+
+impl<'de, F, T: BorrowDecode<'de, F> + Hash + Eq, S: BuildHasher + Default> BorrowDecode<'de, F>
+	for HashSet<T, S>
+{
+	fn borrow_decode(r: &mut BorrowReader<'de>) -> Result<Self, DecodeError> {
+		let mut res = HashSet::default();
+
+		while !r.read_terminal()? {
+			let item = T::borrow_decode(r)?;
+			res.insert(item);
+		}
+
+		Ok(res)
+	}
+}
+
+impl<'de, F, T: BorrowDecode<'de, F> + Ord> BorrowDecode<'de, F> for BTreeSet<T> {
+	fn borrow_decode(r: &mut BorrowReader<'de>) -> Result<Self, DecodeError> {
+		let mut res = BTreeSet::default();
+
+		while !r.read_terminal()? {
+			let item = T::borrow_decode(r)?;
+			res.insert(item);
 		}
 
 		Ok(res)
