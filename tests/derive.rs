@@ -2,8 +2,8 @@ use std::borrow::Cow;
 use std::fmt::Debug;
 
 use storekey::{
-	decode, decode_borrow, encode_vec, encode_vec_format, BorrowDecode, Decode, Encode, EscapedStr,
-	ToEscaped,
+	BorrowDecode, Decode, Encode, EscapedStr, ToEscaped, decode, decode_borrow, encode_vec,
+	encode_vec_format,
 };
 
 fn roundtrip<T: Encode + Decode + for<'a> BorrowDecode<'a> + Debug + PartialEq>(a: T) {

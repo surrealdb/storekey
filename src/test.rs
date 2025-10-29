@@ -2,7 +2,7 @@ use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Debug;
 
-use crate::{decode, decode_borrow, encode_vec, BorrowDecode, Decode, Encode};
+use crate::{BorrowDecode, Decode, Encode, decode, decode_borrow, encode_vec};
 
 macro_rules! test_primitives {
 	($t:ident,$name:ident) => {
