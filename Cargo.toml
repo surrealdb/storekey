@@ -1,7 +1,8 @@
-[package]
-name = "storekey"
-publish = true
-edition = "2021"
+[workspace]
+members = [".", "storekey-derive"]
+
+[workspace.package]
+edition = "2024"
 version = "0.9.0"
 authors = [
 	"Tobie Morgan Hitchcock <tobie@surrealdb.com>",
@@ -15,8 +16,20 @@ keywords = ["database", "encoding", "key-value", "kv-store", "serialization"]
 categories = ["encoding"]
 license = "Apache-2.0"
 
-[workspace]
-members = ["storekey-derive"]
+[package]
+name = "storekey"
+publish = true
+edition.workspace = true
+version.workspace = true
+authors.workspace = true
+description.workspace = true
+repository.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+categories.workspace = true
+license.workspace = true
+
+[workspace.lints]
 
 [features]
 default = ["derive"]
@@ -25,4 +38,5 @@ uuid = ["dep:uuid"]
 
 [dependencies]
 storekey-derive = { version = "0.9.0", path = "storekey-derive", optional = true }
-uuid = { version = "1.17", optional = true }
+uuid = { version = "1.18", optional = true }
+

@@ -1,7 +1,7 @@
 use std::io::Write;
 
-use super::types::EscapedSlice;
 use super::EncodeError;
+use super::types::EscapedSlice;
 
 /// The writer type used in [`storekey::Encode`].
 ///

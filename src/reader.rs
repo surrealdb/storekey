@@ -1,8 +1,8 @@
 use std::borrow::Cow;
 use std::io::BufRead;
 
-use super::types::{EscapedSlice, EscapedStr};
 use super::DecodeError;
+use super::types::{EscapedSlice, EscapedStr};
 
 /// Struct used in [`storekey::Decode`] for reading types from the buffer.
 ///
