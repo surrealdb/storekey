@@ -3,7 +3,7 @@ members = [".", "storekey-derive"]
 
 [workspace.package]
 edition = "2024"
-version = "0.9.0"
+version = "0.10.0"
 authors = [
 	"Tobie Morgan Hitchcock <tobie@surrealdb.com>",
 	"Michal Hornicky <mhornick@redhat.com>",
@@ -35,8 +35,10 @@ license.workspace = true
 default = ["derive"]
 derive = ["storekey-derive"]
 uuid = ["dep:uuid"]
+bytes = ["dep:bytes"]
 
 [dependencies]
-storekey-derive = { version = "0.9.0", path = "storekey-derive", optional = true }
+storekey-derive = { version = "0.10.0", path = "storekey-derive", optional = true }
 uuid = { version = "1.18", optional = true }
+bytes = { version = "1.0", optional = true }
 
