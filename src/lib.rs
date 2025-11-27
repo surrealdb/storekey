@@ -35,6 +35,7 @@
 //!   general encoding library such as [Cap'n Proto](https://github.com/dwrensha/capnproto-rust) or
 //!   [bincode](https://github.com/TyOverby/binary-encode) will serve you better if this feature is
 //!   not necessary.
+
 use std::error::Error;
 use std::fmt;
 use std::io::{self, BufRead, Write};
