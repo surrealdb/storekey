@@ -3,7 +3,7 @@ members = [".", "storekey-derive"]
 
 [workspace.package]
 edition = "2024"
-version = "0.10.0"
+version = "0.11.0"
 authors = [
 	"Tobie Morgan Hitchcock <tobie@surrealdb.com>",
 	"Michal Hornicky <mhornick@redhat.com>",
