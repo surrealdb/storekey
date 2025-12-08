@@ -14,9 +14,9 @@ license.workspace = true
 proc-macro = true
 
 [dependencies]
-syn = { version = "2", features = ["extra-traits"] }
-quote = { version = "1" }
 proc-macro2 = "1"
+quote = { version = "1" }
+syn = { version = "2", features = ["extra-traits"] }
 
 [lints]
 workspace = true
